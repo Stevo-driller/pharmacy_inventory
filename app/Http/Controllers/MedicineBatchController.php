@@ -1,0 +1,145 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Medicine;
+use App\Models\MedicineBatch;
+use App\Models\Supplier;
+use Illuminate\Http\Request;
+
+class MedicineBatchController extends Controller
+{
+    /**
+     * Display stock batches.
+     */
+    public function index()
+    {
+        $batches = MedicineBatch::with([
+            'medicine',
+            'supplier'
+        ])
+        ->latest()
+        ->get();
+
+        return view('stock.index', compact('batches'));
+    }
+
+    /**
+     * Show receive stock form.
+     */
+    public function create()
+    {
+        $medicines = Medicine::where('status', true)
+            ->orderBy('name')
+            ->get();
+
+        $suppliers = Supplier::where('status', true)
+            ->orderBy('name')
+            ->get();
+
+        return view('stock.create', compact(
+            'medicines',
+            'suppliers'
+        ));
+    }
+
+    /**
+     * Receive new stock.
+     */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'medicine_id' => 'required|exists:medicines,id',
+            'supplier_id' => 'nullable|exists:suppliers,id',
+            'batch_number' => 'required|string|max:255',
+            'quantity' => 'required|integer|min:1',
+            'buying_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0',
+            'manufactured_date' => 'nullable|date',
+            'expiry_date' => 'required|date|after:today',
+            'received_date' => 'nullable|date',
+        ]);
+
+        $validated['received_date'] =
+            $validated['received_date'] ?? now()->toDateString();
+
+        $validated['status'] = true;
+
+        MedicineBatch::create($validated);
+
+        return redirect()
+            ->route('stock.index')
+            ->with('success', 'Stock received successfully.');
+    }
+
+    /**
+     * Display a stock batch.
+     */
+    public function show(MedicineBatch $stock)
+    {
+        $stock->load([
+            'medicine',
+            'supplier'
+        ]);
+
+        return view('stock.show', compact('stock'));
+    }
+
+    /**
+     * Show edit stock form.
+     */
+    public function edit(MedicineBatch $stock)
+    {
+        $medicines = Medicine::where('status', true)
+            ->orderBy('name')
+            ->get();
+
+        $suppliers = Supplier::where('status', true)
+            ->orderBy('name')
+            ->get();
+
+        return view('stock.edit', compact(
+            'stock',
+            'medicines',
+            'suppliers'
+        ));
+    }
+
+    /**
+     * Update stock batch.
+     */
+    public function update(
+        Request $request,
+        MedicineBatch $stock
+    ) {
+        $validated = $request->validate([
+            'medicine_id' => 'required|exists:medicines,id',
+            'supplier_id' => 'nullable|exists:suppliers,id',
+            'batch_number' => 'required|string|max:255',
+            'quantity' => 'required|integer|min:0',
+            'buying_price' => 'required|numeric|min:0',
+            'selling_price' => 'required|numeric|min:0',
+            'manufactured_date' => 'nullable|date',
+            'expiry_date' => 'required|date',
+            'received_date' => 'nullable|date',
+        ]);
+
+        $stock->update($validated);
+
+        return redirect()
+            ->route('stock.index')
+            ->with('success', 'Stock batch updated successfully.');
+    }
+
+    /**
+     * Delete stock batch.
+     */
+    public function destroy(MedicineBatch $stock)
+    {
+        $stock->delete();
+
+        return redirect()
+            ->route('stock.index')
+            ->with('success', 'Stock batch deleted successfully.');
+    }
+}
