@@ -16,10 +16,10 @@ class MedicineBatchController extends Controller
     {
         $batches = MedicineBatch::with([
             'medicine',
-            'supplier'
+            'supplier',
         ])
-        ->latest()
-        ->get();
+            ->latest()
+            ->get();
 
         return view('stock.index', compact('batches'));
     }
@@ -79,7 +79,7 @@ class MedicineBatchController extends Controller
     {
         $stock->load([
             'medicine',
-            'supplier'
+            'supplier',
         ]);
 
         return view('stock.show', compact('stock'));
@@ -107,6 +107,9 @@ class MedicineBatchController extends Controller
 
     /**
      * Update stock batch.
+     *
+     * Expiry dates must be in the future when editing a batch.
+     * The status field is deliberately not accepted from the form.
      */
     public function update(
         Request $request,
@@ -120,7 +123,7 @@ class MedicineBatchController extends Controller
             'buying_price' => 'required|numeric|min:0',
             'selling_price' => 'required|numeric|min:0',
             'manufactured_date' => 'nullable|date',
-            'expiry_date' => 'required|date',
+            'expiry_date' => 'required|date|after:today',
             'received_date' => 'nullable|date',
         ]);
 
@@ -132,10 +135,72 @@ class MedicineBatchController extends Controller
     }
 
     /**
-     * Delete stock batch.
+     * Deactivate a stock batch without deleting its history.
+     */
+    public function deactivate(MedicineBatch $stock)
+    {
+        if (! $stock->status) {
+            return redirect()
+                ->route('stock.index')
+                ->with('info', 'This stock batch is already inactive.');
+        }
+
+        $stock->update([
+            'status' => false,
+        ]);
+
+        return redirect()
+            ->route('stock.index')
+            ->with(
+                'success',
+                'Stock batch deactivated successfully. Its sales history has been preserved.'
+            );
+    }
+
+    /**
+     * Reactivate a stock batch only if it has not expired.
+     */
+    public function activate(MedicineBatch $stock)
+    {
+        if ($stock->expiry_date->isPast() &&
+            ! $stock->expiry_date->isToday()) {
+            return redirect()
+                ->route('stock.index')
+                ->with(
+                    'error',
+                    'This batch has expired and cannot be reactivated.'
+                );
+        }
+
+        if ($stock->status) {
+            return redirect()
+                ->route('stock.index')
+                ->with('info', 'This stock batch is already active.');
+        }
+
+        $stock->update([
+            'status' => true,
+        ]);
+
+        return redirect()
+            ->route('stock.index')
+            ->with('success', 'Stock batch activated successfully.');
+    }
+
+    /**
+     * Delete a batch only when it has never been used in a sale.
      */
     public function destroy(MedicineBatch $stock)
     {
+        if ($stock->saleItems()->exists()) {
+            return redirect()
+                ->route('stock.index')
+                ->with(
+                    'error',
+                    'This batch cannot be deleted because it has been used in sales. Please deactivate it instead.'
+                );
+        }
+
         $stock->delete();
 
         return redirect()

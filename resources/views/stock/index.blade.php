@@ -5,10 +5,6 @@
 @section('content')
 
 <style>
-    /* =========================================================
-       STOCK MANAGEMENT PAGE
-       ========================================================= */
-
     .stock-page {
         width: 100%;
         max-width: 100%;
@@ -21,10 +17,6 @@
     .stock-page *::after {
         box-sizing: border-box;
     }
-
-    /* =========================================================
-       HEADER
-       ========================================================= */
 
     .stock-header {
         width: 100%;
@@ -56,10 +48,6 @@
         flex-shrink: 0;
         white-space: nowrap;
     }
-
-    /* =========================================================
-       SUMMARY CARDS
-       ========================================================= */
 
     .stock-summary {
         width: 100%;
@@ -99,10 +87,6 @@
         font-size: 12px;
     }
 
-    /* =========================================================
-       MAIN CARD
-       ========================================================= */
-
     .stock-card {
         width: 100%;
         background: #ffffff;
@@ -131,10 +115,6 @@
         color: #6b7280;
         font-size: 13px;
     }
-
-    /* =========================================================
-       TABLE WRAPPER
-       ========================================================= */
 
     .stock-table-wrapper {
         width: 100%;
@@ -179,10 +159,6 @@
         background: #f8fafc;
     }
 
-    /* =========================================================
-       MEDICINE CELL
-       ========================================================= */
-
     .medicine-cell {
         min-width: 220px;
     }
@@ -199,10 +175,6 @@
         color: #6b7280;
         font-size: 12px;
     }
-
-    /* =========================================================
-       TOTAL STOCK
-       ========================================================= */
 
     .total-stock-cell {
         min-width: 150px;
@@ -234,10 +206,6 @@
         color: #dc2626;
     }
 
-    /* =========================================================
-       BATCH COUNT
-       ========================================================= */
-
     .batch-count {
         display: inline-flex;
         align-items: center;
@@ -251,19 +219,11 @@
         font-weight: 700;
     }
 
-    /* =========================================================
-       PRICE
-       ========================================================= */
-
     .price {
         white-space: nowrap;
         color: #374151;
         font-weight: 600;
     }
-
-    /* =========================================================
-       EXPIRY
-       ========================================================= */
 
     .expiry-info {
         min-width: 130px;
@@ -276,7 +236,7 @@
     }
 
     .expiry-warning {
-        color: #dc2626;
+        color: #dc2626 !important;
     }
 
     .expiry-normal {
@@ -290,10 +250,6 @@
         color: #dc2626;
         font-weight: 600;
     }
-
-    /* =========================================================
-       STATUS
-       ========================================================= */
 
     .status-badge {
         display: inline-flex;
@@ -316,6 +272,11 @@
         color: #b91c1c;
     }
 
+    .status-expired {
+        background: #fff7ed;
+        color: #c2410c;
+    }
+
     .status-dot {
         width: 6px;
         height: 6px;
@@ -323,10 +284,6 @@
         background: currentColor;
         flex-shrink: 0;
     }
-
-    /* =========================================================
-       ACTIONS
-       ========================================================= */
 
     .action-cell {
         min-width: 190px;
@@ -339,12 +296,14 @@
         flex-wrap: wrap;
     }
 
-    .actions form {
+    .actions form,
+    .batch-actions form {
         margin: 0;
         padding: 0;
     }
 
-    .actions .btn {
+    .actions .btn,
+    .batch-actions .btn {
         white-space: nowrap;
     }
 
@@ -373,10 +332,6 @@
     .view-batches-btn.open .arrow {
         transform: rotate(180deg);
     }
-
-    /* =========================================================
-       BATCH DETAILS ROW
-       ========================================================= */
 
     .batch-details-row {
         display: none;
@@ -429,6 +384,11 @@
         border: 1px solid #e5e7eb;
         border-radius: 9px;
         padding: 15px;
+    }
+
+    .batch-card-inactive {
+        opacity: 0.85;
+        border-color: #fecaca;
     }
 
     .batch-card-header {
@@ -500,6 +460,11 @@
         color: #047857;
     }
 
+    .batch-inactive {
+        background: #f3f4f6;
+        color: #4b5563;
+    }
+
     .batch-actions {
         display: flex;
         gap: 7px;
@@ -509,9 +474,9 @@
         border-top: 1px solid #eef2f7;
     }
 
-    /* =========================================================
-       EMPTY STATE
-       ========================================================= */
+    .batch-actions form {
+        display: inline-flex;
+    }
 
     .empty-state {
         padding: 55px 25px;
@@ -545,12 +510,32 @@
         margin-bottom: 18px;
     }
 
-    /* =========================================================
-       RESPONSIVE
-       ========================================================= */
+    .stock-alert {
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+
+    .stock-alert-success {
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+    }
+
+    .stock-alert-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+    }
+
+    .stock-alert-info {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1e40af;
+    }
 
     @media (max-width: 1000px) {
-
         .stock-summary {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
@@ -565,7 +550,6 @@
     }
 
     @media (max-width: 700px) {
-
         .stock-header {
             align-items: stretch;
             flex-direction: column;
@@ -602,776 +586,692 @@
 
 <div class="stock-page">
 
+    {{-- PAGE HEADER --}}
 
-{{-- =========================================================
-     PAGE HEADER
-     ========================================================= --}}
+    <div class="stock-header">
+        <div class="stock-header-content">
+            <h2>Stock Management</h2>
 
-<div class="stock-header">
+            <p>
+                Manage medicine stock, batches, expiry dates and inventory levels.
+            </p>
+        </div>
 
-    <div class="stock-header-content">
-
-        <h2>
-            Stock Management
-        </h2>
-
-        <p>
-            Manage medicine stock, batches, expiry dates and inventory levels.
-        </p>
-
+        <a
+            href="{{ route('stock.create') }}"
+            class="btn btn-primary receive-stock-btn"
+        >
+            + Receive Stock
+        </a>
     </div>
 
-    <a
-        href="{{ route('stock.create') }}"
-        class="btn btn-primary receive-stock-btn"
-    >
-        + Receive Stock
-    </a>
+    {{-- STATUS MESSAGES --}}
 
-</div>
+    @if(session('success'))
+        <div class="stock-alert stock-alert-success">
+            {{ session('success') }}
+        </div>
+    @endif
 
+    @if(session('error'))
+        <div class="stock-alert stock-alert-error">
+            {{ session('error') }}
+        </div>
+    @endif
 
-{{-- =========================================================
-     CALCULATE SUMMARY
-     ========================================================= --}}
+    @if(session('info'))
+        <div class="stock-alert stock-alert-info">
+            {{ session('info') }}
+        </div>
+    @endif
 
-@php
+    @if($errors->any())
+        <div class="stock-alert stock-alert-error">
+            <strong>Please check the following:</strong>
 
-    /*
-     * Group all batches by medicine.
-     *
-     * This means:
-     *
-     * Ibuprofen 400mg
-     * Batch DCI-891 = 50
-     * Batch VGH-389 = 86
-     *
-     * Total = 136
-     */
+            <ul style="margin: 8px 0 0; padding-left: 20px;">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
 
-    $medicineGroups = $batches->groupBy('medicine_id');
+    {{-- SUMMARY CALCULATIONS --}}
 
-    $medicineCount = $medicineGroups->count();
+    @php
+        $today = today();
 
-    $totalBatches = $batches->count();
+        $medicineGroups = $batches->groupBy('medicine_id');
 
-    $totalUnits = $batches->sum(function ($batch) {
-        return (int) $batch->quantity;
-    });
+        $medicineCount = $medicineGroups->count();
 
-    $activeUnits = $batches
-        ->where('status', true)
-        ->sum(function ($batch) {
+        $totalBatches = $batches->count();
+
+        $totalUnits = $batches->sum(function ($batch) {
             return (int) $batch->quantity;
         });
 
-@endphp
+        /*
+         * Active units include only batches that:
+         * - Are marked active.
+         * - Have stock remaining.
+         * - Have not expired.
+         */
+        $activeUnits = $batches
+            ->filter(function ($batch) use ($today) {
+                return $batch->status
+                    && (int) $batch->quantity > 0
+                    && $batch->expiry_date
+                    && $batch->expiry_date->greaterThanOrEqualTo($today);
+            })
+            ->sum(function ($batch) {
+                return (int) $batch->quantity;
+            });
+    @endphp
 
+    {{-- SUMMARY CARDS --}}
 
-{{-- =========================================================
-     SUMMARY CARDS
-     ========================================================= --}}
+    <div class="stock-summary">
 
-<div class="stock-summary">
+        <div class="summary-card">
+            <span class="summary-label">Medicines</span>
 
-    <div class="summary-card">
-
-        <span class="summary-label">
-            Medicines
-        </span>
-
-        <span class="summary-value">
-            {{ number_format($medicineCount) }}
-        </span>
-
-        <div class="summary-description">
-            Unique medicines in stock
-        </div>
-
-    </div>
-
-
-    <div class="summary-card">
-
-        <span class="summary-label">
-            Total Batches
-        </span>
-
-        <span class="summary-value">
-            {{ number_format($totalBatches) }}
-        </span>
-
-        <div class="summary-description">
-            Individual stock batches
-        </div>
-
-    </div>
-
-
-    <div class="summary-card">
-
-        <span class="summary-label">
-            Total Units
-        </span>
-
-        <span class="summary-value">
-            {{ number_format($totalUnits) }}
-        </span>
-
-        <div class="summary-description">
-            All stock quantities combined
-        </div>
-
-    </div>
-
-
-    <div class="summary-card">
-
-        <span class="summary-label">
-            Active Units
-        </span>
-
-        <span class="summary-value">
-            {{ number_format($activeUnits) }}
-        </span>
-
-        <div class="summary-description">
-            Units from active batches
-        </div>
-
-    </div>
-
-</div>
-
-
-{{-- =========================================================
-     STOCK TABLE
-     ========================================================= --}}
-
-<div class="stock-card">
-
-    <div class="stock-card-header">
-
-        <div>
-            <h3>
-                Medicine Inventory
-            </h3>
-
-            <span>
-                Stock is grouped by medicine. Expand a medicine to view its batches.
+            <span class="summary-value">
+                {{ number_format($medicineCount) }}
             </span>
+
+            <div class="summary-description">
+                Unique medicines in stock
+            </div>
+        </div>
+
+        <div class="summary-card">
+            <span class="summary-label">Total Batches</span>
+
+            <span class="summary-value">
+                {{ number_format($totalBatches) }}
+            </span>
+
+            <div class="summary-description">
+                Individual stock batches
+            </div>
+        </div>
+
+        <div class="summary-card">
+            <span class="summary-label">Total Units</span>
+
+            <span class="summary-value">
+                {{ number_format($totalUnits) }}
+            </span>
+
+            <div class="summary-description">
+                All recorded stock quantities
+            </div>
+        </div>
+
+        <div class="summary-card">
+            <span class="summary-label">Available Units</span>
+
+            <span class="summary-value">
+                {{ number_format($activeUnits) }}
+            </span>
+
+            <div class="summary-description">
+                Active, unexpired stock with quantity remaining
+            </div>
         </div>
 
     </div>
 
+    {{-- STOCK TABLE --}}
 
-    <div class="stock-table-wrapper">
+    <div class="stock-card">
 
-        <table class="stock-table">
+        <div class="stock-card-header">
+            <div>
+                <h3>Medicine Inventory</h3>
 
-            <thead>
+                <span>
+                    Expand a medicine to view, deactivate or reactivate its batches.
+                </span>
+            </div>
+        </div>
 
-                <tr>
+        <div class="stock-table-wrapper">
 
-                    <th>
-                        #
-                    </th>
+            <table class="stock-table">
 
-                    <th>
-                        Medicine
-                    </th>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Medicine</th>
+                        <th>Available Stock</th>
+                        <th>Batches</th>
+                        <th>Selling Price</th>
+                        <th>Earliest Expiry</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
 
-                    <th>
-                        Total Stock
-                    </th>
+                <tbody>
 
-                    <th>
-                        Batches
-                    </th>
+                    @forelse($medicineGroups as $medicineId => $medicineBatches)
 
-                    <th>
-                        Selling Price
-                    </th>
+                        @php
+                            $medicine = $medicineBatches->first()->medicine;
 
-                    <th>
-                        Earliest Expiry
-                    </th>
+                            /*
+                             * Calculate stock that is eligible for dispensing.
+                             */
+                            $availableBatches = $medicineBatches->filter(
+                                function ($batch) use ($today) {
+                                    return $batch->status
+                                        && (int) $batch->quantity > 0
+                                        && $batch->expiry_date
+                                        && $batch->expiry_date->greaterThanOrEqualTo($today);
+                                }
+                            );
 
-                    <th>
-                        Status
-                    </th>
+                            $totalMedicineStock = $availableBatches->sum(
+                                function ($batch) {
+                                    return (int) $batch->quantity;
+                                }
+                            );
 
-                    <th>
-                        Actions
-                    </th>
+                            /*
+                             * Find the earliest expiry among batches with stock.
+                             */
+                            $earliestExpiryBatch = $medicineBatches
+                                ->filter(function ($batch) {
+                                    return $batch->expiry_date !== null
+                                        && (int) $batch->quantity > 0;
+                                })
+                                ->sortBy('expiry_date')
+                                ->first();
 
-                </tr>
+                            $hasActiveStock = $totalMedicineStock > 0;
 
-            </thead>
+                            $rowId = 'medicine-' . $medicineId;
 
+                            $daysUntilExpiry = null;
 
-            <tbody>
-
-                @forelse($medicineGroups as $medicineId => $medicineBatches)
-
-                    @php
-
-                        /*
-                         * Get the medicine from the first batch.
-                         */
-
-                        $medicine = $medicineBatches->first()->medicine;
-
-                        /*
-                         * Total stock across ALL batches.
-                         */
-
-                        $totalMedicineStock = $medicineBatches->sum(function ($batch) {
-                            return (int) $batch->quantity;
-                        });
-
-                        /*
-                         * Active batches.
-                         */
-
-                        $activeBatches = $medicineBatches
-                            ->where('status', true);
-
-                        /*
-                         * Earliest expiry date.
-                         */
-
-                        $earliestExpiryBatch = $medicineBatches
-                            ->filter(function ($batch) {
-                                return $batch->expiry_date !== null;
-                            })
-                            ->sortBy('expiry_date')
-                            ->first();
-
-                        /*
-                         * Determine whether any active stock exists.
-                         */
-
-                        $hasActiveStock = $activeBatches->sum('quantity') > 0;
-
-                        /*
-                         * Check earliest expiry.
-                         */
-
-                        $daysUntilExpiry = null;
-
-                        if ($earliestExpiryBatch) {
-
-                            $daysUntilExpiry = now()
-                                ->startOfDay()
-                                ->diffInDays(
+                            if ($earliestExpiryBatch) {
+                                $daysUntilExpiry = $today->diffInDays(
                                     $earliestExpiryBatch->expiry_date,
                                     false
                                 );
+                            }
+                        @endphp
 
-                        }
+                        {{-- MEDICINE SUMMARY ROW --}}
 
-                        $rowId = 'medicine-' . $medicineId;
+                        <tr class="medicine-row">
 
-                    @endphp
+                            <td>{{ $loop->iteration }}</td>
 
+                            <td class="medicine-cell">
+                                <div class="medicine-name">
+                                    {{ $medicine->name ?? 'Unknown medicine' }}
+                                </div>
 
-                    {{-- =================================================
-                         MEDICINE ROW
-                         ================================================= --}}
-
-                    <tr class="medicine-row">
-
-                        <td>
-                            {{ $loop->iteration }}
-                        </td>
-
-
-                        <td class="medicine-cell">
-
-                            <div class="medicine-name">
-                                {{ $medicine->name }}
-                            </div>
-
-                            <div class="medicine-meta">
-
-                                @if(!empty($medicine->generic_name))
-                                    {{ $medicine->generic_name }}
-                                @endif
-
-                                @if(!empty($medicine->strength))
+                                <div class="medicine-meta">
                                     @if(!empty($medicine->generic_name))
-                                        •
+                                        {{ $medicine->generic_name }}
                                     @endif
-                                    {{ $medicine->strength }}
+
+                                    @if(!empty($medicine->strength))
+                                        @if(!empty($medicine->generic_name))
+                                            •
+                                        @endif
+
+                                        {{ $medicine->strength }}
+                                    @endif
+                                </div>
+                            </td>
+
+                            {{-- AVAILABLE STOCK --}}
+
+                            <td class="total-stock-cell">
+
+                                @if($totalMedicineStock <= 0)
+                                    <div class="total-stock-number stock-empty">
+                                        0
+                                    </div>
+                                @elseif($totalMedicineStock <= 10)
+                                    <div class="total-stock-number stock-low">
+                                        {{ number_format($totalMedicineStock) }}
+                                    </div>
+                                @else
+                                    <div class="total-stock-number stock-good">
+                                        {{ number_format($totalMedicineStock) }}
+                                    </div>
                                 @endif
 
-                            </div>
+                                <span class="total-stock-label">
+                                    eligible units
+                                </span>
 
-                        </td>
+                            </td>
 
+                            {{-- BATCH COUNT --}}
 
-                        {{-- =============================================
-                             TOTAL STOCK
-                             ============================================= --}}
+                            <td>
+                                <span class="batch-count">
+                                    {{ $medicineBatches->count() }}
+                                </span>
+                            </td>
 
-                        <td class="total-stock-cell">
+                            {{-- SELLING PRICE --}}
 
-                            @if($totalMedicineStock <= 0)
+                            <td>
+                                @php
+                                    $sellingPrices = $availableBatches
+                                        ->pluck('selling_price')
+                                        ->filter();
+                                @endphp
 
-                                <div class="total-stock-number stock-empty">
-                                    0
-                                </div>
+                                @if($sellingPrices->count() > 0)
+                                    KSh {{ number_format($sellingPrices->min(), 2) }}
 
-                            @elseif($totalMedicineStock <= 10)
+                                    @if($sellingPrices->unique()->count() > 1)
+                                        <br>
 
-                                <div class="total-stock-number stock-low">
-                                    {{ number_format($totalMedicineStock) }}
-                                </div>
-
-                            @else
-
-                                <div class="total-stock-number stock-good">
-                                    {{ number_format($totalMedicineStock) }}
-                                </div>
-
-                            @endif
-
-                            <span class="total-stock-label">
-                                units available
-                            </span>
-
-                        </td>
-
-
-                        {{-- =============================================
-                             BATCH COUNT
-                             ============================================= --}}
-
-                        <td>
-
-                            <span class="batch-count">
-                                {{ $medicineBatches->count() }}
-                            </span>
-
-                        </td>
-
-
-                        {{-- =============================================
-                             SELLING PRICE
-                             ============================================= --}}
-
-                        <td>
-
-                            @php
-                                $sellingPrices = $medicineBatches
-                                    ->pluck('selling_price')
-                                    ->filter();
-                            @endphp
-
-                            @if($sellingPrices->count() > 0)
-
-                                KSh
-                                {{ number_format($sellingPrices->min(), 2) }}
-
-                                @if($sellingPrices->unique()->count() > 1)
-                                    <br>
-                                    <span style="font-size:11px;color:#6b7280;">
-                                        varies by batch
-                                    </span>
+                                        <span style="font-size: 11px; color: #6b7280;">
+                                            varies by batch
+                                        </span>
+                                    @endif
+                                @else
+                                    KSh 0.00
                                 @endif
+                            </td>
 
-                            @else
+                            {{-- EARLIEST EXPIRY --}}
 
-                                KSh 0.00
+                            <td class="expiry-info">
 
-                            @endif
+                                @if($earliestExpiryBatch)
 
-                        </td>
+                                    @if($earliestExpiryBatch->expiry_date->lt($today))
+                                        <span class="expiry-date expiry-warning">
+                                            {{ $earliestExpiryBatch->expiry_date->format('d M Y') }}
+                                        </span>
 
+                                        <span class="expiry-label">
+                                            Expired — do not dispense
+                                        </span>
 
-                        {{-- =============================================
-                             EARLIEST EXPIRY
-                             ============================================= --}}
+                                    @elseif($daysUntilExpiry !== null && $daysUntilExpiry <= 30)
+                                        <span class="expiry-date expiry-warning">
+                                            {{ $earliestExpiryBatch->expiry_date->format('d M Y') }}
+                                        </span>
 
-                        <td class="expiry-info">
+                                        <span class="expiry-label">
+                                            Expiring soon
+                                        </span>
 
-                            @if($earliestExpiryBatch)
-
-                                @if($daysUntilExpiry !== null && $daysUntilExpiry < 0)
-
-                                    <span class="expiry-date expiry-warning">
-                                        {{ $earliestExpiryBatch->expiry_date->format('d M Y') }}
-                                    </span>
-
-                                    <span class="expiry-label">
-                                        Expired
-                                    </span>
-
-                                @elseif($daysUntilExpiry !== null && $daysUntilExpiry <= 30)
-
-                                    <span class="expiry-date expiry-warning">
-                                        {{ $earliestExpiryBatch->expiry_date->format('d M Y') }}
-                                    </span>
-
-                                    <span class="expiry-label">
-                                        Expiring soon
-                                    </span>
+                                    @else
+                                        <span class="expiry-date expiry-normal">
+                                            {{ $earliestExpiryBatch->expiry_date->format('d M Y') }}
+                                        </span>
+                                    @endif
 
                                 @else
-
-                                    <span class="expiry-date expiry-normal">
-                                        {{ $earliestExpiryBatch->expiry_date->format('d M Y') }}
-                                    </span>
-
+                                    <span>N/A</span>
                                 @endif
 
-                            @else
+                            </td>
 
-                                <span>
-                                    N/A
-                                </span>
+                            {{-- MEDICINE STOCK STATUS --}}
 
-                            @endif
-
-                        </td>
-
-
-                        {{-- =============================================
-                             STATUS
-                             ============================================= --}}
-
-                        <td>
-
-                            @if($hasActiveStock)
-
-                                <span class="status-badge status-active">
-
-                                    <span class="status-dot"></span>
-
-                                    Active
-
-                                </span>
-
-                            @else
-
-                                <span class="status-badge status-inactive">
-
-                                    <span class="status-dot"></span>
-
-                                    Inactive
-
-                                </span>
-
-                            @endif
-
-                        </td>
-
-
-                        {{-- =============================================
-                             ACTIONS
-                             ============================================= --}}
-
-                        <td class="action-cell">
-
-                            <div class="actions">
-
-                                <button
-                                    type="button"
-                                    class="view-batches-btn"
-                                    onclick="toggleBatches('{{ $rowId }}', this)"
-                                >
-                                    View Batches
-                                    <span class="arrow">▼</span>
-                                </button>
-
-                            </div>
-
-                        </td>
-
-                    </tr>
-
-
-                    {{-- =================================================
-                         EXPANDABLE BATCH DETAILS
-                         ================================================= --}}
-
-                    <tr
-                        id="{{ $rowId }}"
-                        class="batch-details-row"
-                    >
-
-                        <td
-                            colspan="8"
-                            class="batch-details-cell"
-                        >
-
-                            <div class="batch-details">
-
-                                <div class="batch-details-title">
-
-                                    <strong>
-                                        {{ $medicine->name }} — Batch Details
-                                    </strong>
-
-                                    <span>
-                                        {{ $medicineBatches->count() }}
-                                        batch(es)
-                                        •
-                                        {{ number_format($totalMedicineStock) }}
-                                        total units
+                            <td>
+                                @if($hasActiveStock)
+                                    <span class="status-badge status-active">
+                                        <span class="status-dot"></span>
+                                        Available
                                     </span>
+                                @else
+                                    <span class="status-badge status-inactive">
+                                        <span class="status-dot"></span>
+                                        No eligible stock
+                                    </span>
+                                @endif
+                            </td>
 
+                            {{-- MEDICINE ACTIONS --}}
+
+                            <td class="action-cell">
+                                <div class="actions">
+                                    <button
+                                        type="button"
+                                        class="view-batches-btn"
+                                        onclick="toggleBatches('{{ $rowId }}', this)"
+                                    >
+                                        View Batches
+                                        <span class="arrow">▼</span>
+                                    </button>
                                 </div>
+                            </td>
 
+                        </tr>
 
-                                <div class="batch-grid">
+                        {{-- EXPANDABLE BATCH DETAILS --}}
 
-                                    @foreach($medicineBatches->sortBy('expiry_date') as $batch)
+                        <tr
+                            id="{{ $rowId }}"
+                            class="batch-details-row"
+                        >
+                            <td colspan="8" class="batch-details-cell">
 
-                                        @php
+                                <div class="batch-details">
 
-                                            $batchDaysToExpiry = null;
+                                    <div class="batch-details-title">
+                                        <strong>
+                                            {{ $medicine->name ?? 'Medicine' }} — Batch Details
+                                        </strong>
 
-                                            if ($batch->expiry_date) {
+                                        <span>
+                                            {{ $medicineBatches->count() }} batch(es)
+                                            •
+                                            {{ number_format($totalMedicineStock) }} eligible units
+                                        </span>
+                                    </div>
 
-                                                $batchDaysToExpiry = now()
-                                                    ->startOfDay()
-                                                    ->diffInDays(
+                                    <div class="batch-grid">
+
+                                        @foreach($medicineBatches->sortBy('expiry_date') as $batch)
+
+                                            @php
+                                                $isExpired = $batch->expiry_date
+                                                    && $batch->expiry_date->lt($today);
+
+                                                $isActive = (bool) $batch->status;
+
+                                                $hasQuantity = (int) $batch->quantity > 0;
+
+                                                $canDispense = $isActive
+                                                    && ! $isExpired
+                                                    && $hasQuantity
+                                                    && $batch->expiry_date !== null;
+
+                                                $batchDaysToExpiry = null;
+
+                                                if ($batch->expiry_date) {
+                                                    $batchDaysToExpiry = $today->diffInDays(
                                                         $batch->expiry_date,
                                                         false
                                                     );
+                                                }
+                                            @endphp
 
-                                            }
+                                            <div class="batch-card {{ ! $isActive || $isExpired ? 'batch-card-inactive' : '' }}">
 
-                                        @endphp
+                                                <div class="batch-card-header">
 
+                                                    <div class="batch-number">
+                                                        Batch {{ $batch->batch_number }}
+                                                    </div>
 
-                                        <div class="batch-card">
-
-                                            <div class="batch-card-header">
-
-                                                <div class="batch-number">
-                                                    Batch {{ $batch->batch_number }}
-                                                </div>
-
-                                                <div class="batch-quantity">
-                                                    {{ number_format($batch->quantity) }}
-                                                    units
-                                                </div>
-
-                                            </div>
-
-
-                                            <div class="batch-info-grid">
-
-                                                <div class="batch-info-item">
-
-                                                    <span class="batch-info-label">
-                                                        Supplier
-                                                    </span>
-
-                                                    <span class="batch-info-value">
-                                                        {{ $batch->supplier->name ?? 'N/A' }}
-                                                    </span>
+                                                    <div class="batch-quantity">
+                                                        {{ number_format($batch->quantity) }} units
+                                                    </div>
 
                                                 </div>
 
+                                                {{-- BATCH STATUS --}}
 
-                                                <div class="batch-info-item">
+                                                <div style="margin-bottom: 12px;">
 
-                                                    <span class="batch-info-label">
-                                                        Buying Price
-                                                    </span>
+                                                    @if($isExpired)
+                                                        <span class="status-badge status-expired">
+                                                            <span class="status-dot"></span>
+                                                            Expired
+                                                        </span>
 
-                                                    <span class="batch-info-value">
-                                                        KSh {{ number_format($batch->buying_price, 2) }}
-                                                    </span>
+                                                    @elseif(! $isActive)
+                                                        <span class="status-badge status-inactive">
+                                                            <span class="status-dot"></span>
+                                                            Inactive
+                                                        </span>
 
-                                                </div>
+                                                    @elseif(! $hasQuantity)
+                                                        <span class="status-badge status-inactive">
+                                                            <span class="status-dot"></span>
+                                                            Out of stock
+                                                        </span>
 
-
-                                                <div class="batch-info-item">
-
-                                                    <span class="batch-info-label">
-                                                        Selling Price
-                                                    </span>
-
-                                                    <span class="batch-info-value">
-                                                        KSh {{ number_format($batch->selling_price, 2) }}
-                                                    </span>
-
-                                                </div>
-
-
-                                                <div class="batch-info-item">
-
-                                                    <span class="batch-info-label">
-                                                        Expiry
-                                                    </span>
-
-                                                    <span class="batch-info-value
-                                                        @if($batchDaysToExpiry !== null && $batchDaysToExpiry <= 30)
-                                                            expiry-warning
-                                                        @endif
-                                                    ">
-
-                                                        @if($batch->expiry_date)
-                                                            {{ $batch->expiry_date->format('d M Y') }}
-                                                        @else
-                                                            N/A
-                                                        @endif
-
-                                                    </span>
+                                                    @else
+                                                        <span class="status-badge status-active">
+                                                            <span class="status-dot"></span>
+                                                            Active
+                                                        </span>
+                                                    @endif
 
                                                 </div>
 
-                                            </div>
+                                                {{-- BATCH INFORMATION --}}
 
+                                                <div class="batch-info-grid">
 
-                                            {{-- =====================================
-                                                 FEFO INFORMATION
-                                                 ===================================== --}}
+                                                    <div class="batch-info-item">
+                                                        <span class="batch-info-label">
+                                                            Supplier
+                                                        </span>
 
-                                            @if($loop->first && $batch->quantity > 0 && $batchDaysToExpiry !== null && $batchDaysToExpiry >= 0)
+                                                        <span class="batch-info-value">
+                                                            {{ $batch->supplier->name ?? 'N/A' }}
+                                                        </span>
+                                                    </div>
 
-                                                <div class="batch-fefo">
+                                                    <div class="batch-info-item">
+                                                        <span class="batch-info-label">
+                                                            Buying Price
+                                                        </span>
 
-                                                    FEFO:
-                                                    This batch will be used first because
-                                                    it has the earliest expiry date.
+                                                        <span class="batch-info-value">
+                                                            KSh {{ number_format($batch->buying_price, 2) }}
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="batch-info-item">
+                                                        <span class="batch-info-label">
+                                                            Selling Price
+                                                        </span>
+
+                                                        <span class="batch-info-value">
+                                                            KSh {{ number_format($batch->selling_price, 2) }}
+                                                        </span>
+                                                    </div>
+
+                                                    <div class="batch-info-item">
+                                                        <span class="batch-info-label">
+                                                            Expiry
+                                                        </span>
+
+                                                        <span class="batch-info-value {{ $isExpired || ($batchDaysToExpiry !== null && $batchDaysToExpiry <= 30) ? 'expiry-warning' : '' }}">
+                                                            @if($batch->expiry_date)
+                                                                {{ $batch->expiry_date->format('d M Y') }}
+                                                            @else
+                                                                Not recorded
+                                                            @endif
+                                                        </span>
+                                                    </div>
 
                                                 </div>
 
-                                            @elseif($batchDaysToExpiry !== null && $batchDaysToExpiry < 0)
+                                                {{-- FEFO AND EXPIRY MESSAGE --}}
 
-                                                <div class="batch-fefo batch-expired">
+                                                @if($isExpired)
 
-                                                    This batch has expired and should not
-                                                    be used for sales.
+                                                    <div class="batch-fefo batch-expired">
+                                                        This batch has expired. It must not be sold or dispensed.
+                                                    </div>
 
-                                                </div>
+                                                @elseif(! $isActive)
 
-                                            @else
+                                                    <div class="batch-fefo batch-inactive">
+                                                        This batch is deactivated and is not available for dispensing.
+                                                    </div>
 
-                                                <div class="batch-fefo batch-active">
+                                                @elseif(! $hasQuantity)
 
-                                                    Active stock batch.
+                                                    <div class="batch-fefo batch-inactive">
+                                                        This batch has no remaining stock.
+                                                    </div>
 
-                                                </div>
+                                                @elseif(! $batch->expiry_date)
 
-                                            @endif
+                                                    <div class="batch-fefo batch-expired">
+                                                        No expiry date is recorded. This batch is excluded from available stock.
+                                                    </div>
 
+                                                @elseif($batchDaysToExpiry !== null && $batchDaysToExpiry <= 30)
 
-                                            {{-- =====================================
-                                                 BATCH ACTIONS
-                                                 ===================================== --}}
+                                                    <div class="batch-fefo">
+                                                        This batch is approaching its expiry date. Follow FEFO and dispense only while unexpired.
+                                                    </div>
 
-                                            <div class="batch-actions">
+                                                @else
 
-                                                <a
-                                                    href="{{ route('stock.show', $batch) }}"
-                                                    class="btn btn-primary"
-                                                >
-                                                    View
-                                                </a>
+                                                    <div class="batch-fefo batch-active">
+                                                        Active and unexpired stock.
+                                                    </div>
 
-                                                <a
-                                                    href="{{ route('stock.edit', $batch) }}"
-                                                    class="btn btn-warning"
-                                                >
-                                                    Edit
-                                                </a>
+                                                @endif
 
-                                                <form
-                                                    action="{{ route('stock.destroy', $batch) }}"
-                                                    method="POST"
-                                                    onsubmit="return confirm('Delete batch {{ $batch->batch_number }}?');"
-                                                >
+                                                {{-- BATCH ACTIONS --}}
 
-                                                    @csrf
-                                                    @method('DELETE')
+                                                <div class="batch-actions">
 
-                                                    <button
-                                                        type="submit"
-                                                        class="btn btn-danger"
+                                                    <a
+                                                        href="{{ route('stock.show', $batch) }}"
+                                                        class="btn btn-primary"
                                                     >
-                                                        Delete
-                                                    </button>
+                                                        View
+                                                    </a>
 
-                                                </form>
+                                                    <a
+                                                        href="{{ route('stock.edit', $batch) }}"
+                                                        class="btn btn-warning"
+                                                    >
+                                                        Edit
+                                                    </a>
+
+                                                    {{-- DEACTIVATE ACTIVE BATCHES --}}
+
+                                                    @if($isActive)
+
+                                                        <form
+                                                            action="{{ route('stock.deactivate', $batch) }}"
+                                                            method="POST"
+                                                            onsubmit="return confirm('Deactivate batch {{ $batch->batch_number }}? The batch will be preserved in sales history but will no longer be available for dispensing.');"
+                                                        >
+                                                            @csrf
+                                                            @method('PATCH')
+
+                                                            <button
+                                                                type="submit"
+                                                                class="btn btn-danger"
+                                                            >
+                                                                Deactivate
+                                                            </button>
+                                                        </form>
+
+                                                    {{-- REACTIVATE ONLY UNEXPIRED BATCHES --}}
+
+                                                    @elseif(! $isExpired && $batch->expiry_date)
+
+                                                        <form
+                                                            action="{{ route('stock.activate', $batch) }}"
+                                                            method="POST"
+                                                            onsubmit="return confirm('Reactivate batch {{ $batch->batch_number }}?');"
+                                                        >
+                                                            @csrf
+                                                            @method('PATCH')
+
+                                                            <button
+                                                                type="submit"
+                                                                class="btn btn-success"
+                                                            >
+                                                                Reactivate
+                                                            </button>
+                                                        </form>
+
+                                                    @endif
+
+                                                    {{-- DELETE ONLY IF NOT USED IN SALES --}}
+
+                                                    <form
+                                                        action="{{ route('stock.destroy', $batch) }}"
+                                                        method="POST"
+                                                        onsubmit="return confirm('Delete batch {{ $batch->batch_number }}? Batches used in sales cannot be deleted.');"
+                                                    >
+                                                        @csrf
+                                                        @method('DELETE')
+
+                                                        <button
+                                                            type="submit"
+                                                            class="btn btn-danger"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </form>
+
+                                                </div>
 
                                             </div>
 
-                                        </div>
+                                        @endforeach
 
-                                    @endforeach
+                                    </div>
 
                                 </div>
 
-                            </div>
+                            </td>
+                        </tr>
 
-                        </td>
+                    @empty
 
-                    </tr>
+                        <tr>
+                            <td colspan="8" style="padding: 0;">
+                                <div class="empty-state">
 
-                @empty
+                                    <div class="empty-state-icon">
+                                        📦
+                                    </div>
 
-                    <tr>
+                                    <strong>No stock found</strong>
 
-                        <td
-                            colspan="8"
-                            style="padding: 0;"
-                        >
+                                    <span>
+                                        Start by receiving your first medicine stock.
+                                    </span>
 
-                            <div class="empty-state">
+                                    <a
+                                        href="{{ route('stock.create') }}"
+                                        class="btn btn-primary"
+                                    >
+                                        + Receive Stock
+                                    </a>
 
-                                <div class="empty-state-icon">
-                                    📦
                                 </div>
+                            </td>
+                        </tr>
 
-                                <strong>
-                                    No stock found
-                                </strong>
+                    @endforelse
 
-                                <span>
-                                    Start by receiving your first medicine stock.
-                                </span>
+                </tbody>
 
-                                <a
-                                    href="{{ route('stock.create') }}"
-                                    class="btn btn-primary"
-                                >
-                                    + Receive Stock
-                                </a>
+            </table>
 
-                            </div>
-
-                        </td>
-
-                    </tr>
-
-                @endforelse
-
-            </tbody>
-
-        </table>
+        </div>
 
     </div>
 
 </div>
 
-
-</div>
-
-{{-- =============================================================
-JAVASCRIPT
-============================================================= --}}
-
 <script>
-
     function toggleBatches(rowId, button) {
-
         const row = document.getElementById(rowId);
 
         if (!row) {
@@ -1381,67 +1281,37 @@ JAVASCRIPT
         const isOpen = row.classList.contains('open');
 
         /*
-         * Close any other currently open batch rows.
+         * Close other expanded batch rows.
          */
-
-        document
-            .querySelectorAll('.batch-details-row.open')
-            .forEach(function(openRow) {
-
-                if (openRow.id !== rowId) {
-
-                    openRow.classList.remove('open');
-
-                }
-
-            });
-
+        document.querySelectorAll('.batch-details-row.open').forEach(function (openRow) {
+            if (openRow.id !== rowId) {
+                openRow.classList.remove('open');
+            }
+        });
 
         /*
          * Reset other buttons.
          */
-
-        document
-            .querySelectorAll('.view-batches-btn.open')
-            .forEach(function(openButton) {
-
-                if (openButton !== button) {
-
-                    openButton.classList.remove('open');
-                    openButton.innerHTML =
-                        'View Batches <span class="arrow">▼</span>';
-
-                }
-
-            });
-
+        document.querySelectorAll('.view-batches-btn.open').forEach(function (openButton) {
+            if (openButton !== button) {
+                openButton.classList.remove('open');
+                openButton.innerHTML = 'View Batches <span class="arrow">▼</span>';
+            }
+        });
 
         /*
          * Toggle the selected row.
          */
-
         if (isOpen) {
-
             row.classList.remove('open');
-
             button.classList.remove('open');
-
-            button.innerHTML =
-                'View Batches <span class="arrow">▼</span>';
-
+            button.innerHTML = 'View Batches <span class="arrow">▼</span>';
         } else {
-
             row.classList.add('open');
-
             button.classList.add('open');
-
-            button.innerHTML =
-                'Hide Batches <span class="arrow">▲</span>';
-
+            button.innerHTML = 'Hide Batches <span class="arrow">▲</span>';
         }
-
     }
-
 </script>
 
 @endsection

@@ -53,6 +53,7 @@ class UserController extends Controller
                     'admin',
                     'pharmacist',
                     'cashier',
+                    'doctor',
                 ]),
             ],
 
@@ -112,6 +113,7 @@ class UserController extends Controller
                     'admin',
                     'pharmacist',
                     'cashier',
+                    'doctor',
                 ]),
             ],
 
@@ -123,8 +125,10 @@ class UserController extends Controller
             ],
         ]);
 
-        // Do not overwrite the existing password
-        // when no new password was entered.
+        /*
+         * Do not overwrite the existing password
+         * when no new password was entered.
+         */
         if (empty($validated['password'])) {
             unset($validated['password']);
         }
@@ -141,8 +145,10 @@ class UserController extends Controller
      */
     public function destroy(User $user)
     {
-        // Prevent an administrator from deleting
-        // their own account.
+        /*
+         * Prevent an administrator from deleting
+         * their own account.
+         */
         if ($user->id === auth()->id()) {
 
             return redirect()
@@ -170,7 +176,9 @@ class UserController extends Controller
      */
     public function generateResetCode(User $user)
     {
-        // Generate a secure random 6-digit code.
+        /*
+         * Generate a secure random 6-digit code.
+         */
         $code = (string) random_int(100000, 999999);
 
         /*

@@ -10,7 +10,7 @@
     <h2>Add New User</h2>
 
     <p style="margin-top: 5px; color: #666;">
-        Create an account for an administrator, pharmacist or cashier.
+        Create an account for an administrator, pharmacist, cashier or doctor.
     </p>
 </div>
 
@@ -106,6 +106,11 @@
                 <option value="cashier"
                     {{ old('role') === 'cashier' ? 'selected' : '' }}>
                     Cashier
+                </option>
+
+                <option value="doctor"
+                    {{ old('role') === 'doctor' ? 'selected' : '' }}>
+                    Doctor
                 </option>
 
             </select>

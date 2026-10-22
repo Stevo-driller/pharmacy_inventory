@@ -3,475 +3,1386 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+
 use App\Models\Medicine;
+
 use App\Models\MedicineBatch;
+
 use App\Models\Prescription;
+
 use App\Models\PrescriptionItem;
+
 use App\Models\Sale;
+
 use App\Models\SaleItem;
+
 use App\Models\StockMovement;
+
 use Illuminate\Http\Request;
+
 use Illuminate\Support\Facades\DB;
 
+use Illuminate\Support\Facades\Storage;
+
+use Illuminate\Support\Facades\URL;
+
 class SaleController extends Controller
+
 {
-    /*
-    |--------------------------------------------------------------------------
-    | SALE LIST / POS
-    |--------------------------------------------------------------------------
-    */
 
     public function index()
+
     {
+
         $medicines = Medicine::with([
+
             'batches' => function ($query) {
-                $query->where('quantity', '>', 0)
-                    ->where('status', true)
-                    ->whereDate('expiry_date', '>=', now()->toDateString())
-                    ->orderBy('expiry_date');
-            }
+
+                $query->where('status', true)
+
+                    ->where('quantity', '>', 0)
+
+                    ->whereDate('expiry_date', '>=', now())
+
+                    ->orderBy('expiry_date', 'asc');
+
+            },
+
         ])
-            ->whereHas('batches', function ($query) {
-                $query->where('quantity', '>', 0)
-                    ->where('status', true)
-                    ->whereDate('expiry_date', '>=', now()->toDateString());
-            })
+
             ->orderBy('name')
+
             ->get();
 
         return view('sales.index', compact('medicines'));
+
     }
 
+    public function verifyPrescription(Request $request)
 
-    /*
-    |--------------------------------------------------------------------------
-    | CUSTOMER SEARCH
-    |--------------------------------------------------------------------------
-    */
-
-    public function searchCustomers(Request $request)
     {
-        $search = $request->input('search');
 
-        $customers = Customer::where('name', 'like', "%{$search}%")
-            ->orWhere('phone', 'like', "%{$search}%")
-            ->limit(10)
-            ->get([
-                'id',
-                'name',
-                'phone'
+        $validated = $request->validate([
+
+            'prescription_number' => [
+
+                'required',
+
+                'string',
+
+                'max:100',
+
+            ],
+
+        ]);
+
+        $prescription = DB::transaction(function () use ($validated) {
+
+            $prescription = Prescription::where(
+
+                'prescription_number',
+
+                trim($validated['prescription_number'])
+
+            )
+
+                ->lockForUpdate()
+
+                ->first();
+
+            if (!$prescription) {
+
+                return null;
+
+            }
+
+            $prescription->load([
+
+                'customer',
+
+                'items.medicine',
+
             ]);
 
-        return response()->json($customers);
+            if (!in_array(
+
+                $prescription->status,
+
+                [
+
+                    'pending',
+
+                    'verified',
+
+                    'partially_dispensed',
+
+                    'dispensed',
+
+                ],
+
+                true
+
+            )) {
+
+                return null;
+
+            }
+
+            if ($prescription->status === 'dispensed') {
+
+                return $prescription;
+
+            }
+
+            if ($prescription->items->isEmpty()) {
+
+                return $prescription;
+
+            }
+
+            if (!in_array(
+
+                $prescription->status,
+
+                ['verified', 'partially_dispensed'],
+
+                true
+
+            )) {
+
+                $prescription->status = 'verified';
+
+            }
+
+            if (!$prescription->verified) {
+
+                $prescription->verified = true;
+
+            }
+
+            if (!$prescription->verified_by) {
+
+                $prescription->verified_by =
+
+                    auth()->user()?->name ?? 'System';
+
+            }
+
+            if (!$prescription->verified_at) {
+
+                $prescription->verified_at = now();
+
+            }
+
+            $prescription->save();
+
+            return $prescription;
+
+        });
+
+        if (!$prescription) {
+
+            return response()->json([
+
+                'success' => false,
+
+                'message' => 'Prescription not found or its status is invalid.',
+
+            ], 404);
+
+        }
+
+        if ($prescription->status === 'dispensed') {
+
+            return response()->json([
+
+                'success' => false,
+
+                'message' => 'This prescription has already been fully dispensed.',
+
+            ], 422);
+
+        }
+
+        if ($prescription->items->isEmpty()) {
+
+            return response()->json([
+
+                'success' => false,
+
+                'message' => 'This prescription has no medicines.',
+
+            ], 422);
+
+        }
+
+        return response()->json([
+
+            'success' => true,
+
+            'message' => 'Prescription verified successfully.',
+
+            'prescription' => [
+
+                'id' => $prescription->id,
+
+                'prescription_number' => $prescription->prescription_number,
+
+                'customer_id' => $prescription->customer_id,
+
+                'customer_name' => $prescription->customer?->name,
+
+                'customer_phone' => $prescription->customer?->phone,
+
+                'prescriber_name' => $prescription->prescriber_name,
+
+                'prescription_date' => $prescription->prescription_date,
+
+                'status' => $prescription->status,
+
+                'verified' => (bool) $prescription->verified,
+
+                'verified_by' => $prescription->verified_by,
+
+                'verified_at' => $prescription->verified_at,
+
+                'items' => $prescription->items->map(function ($item) {
+
+                    return [
+
+                        'id' => $item->id,
+
+                        'medicine_id' => $item->medicine_id,
+
+                        'medicine_name' => $item->medicine?->name,
+
+                        'quantity_prescribed' => (int) $item->quantity_prescribed,
+
+                        'quantity_dispensed' => (int) $item->quantity_dispensed,
+
+                        'quantity_remaining' => max(
+
+                            0,
+
+                            (int) $item->quantity_prescribed
+
+                                - (int) $item->quantity_dispensed
+
+                        ),
+
+                        'dosage' => $item->dosage,
+
+                        'frequency' => $item->frequency,
+
+                        'duration' => $item->duration,
+
+                        'route' => $item->route,
+
+                        'instructions' => $item->instructions,
+
+                    ];
+
+                })->values(),
+
+            ],
+
+        ]);
+
     }
 
+    public function searchCustomers(Request $request)
 
-    /*
-    |--------------------------------------------------------------------------
-    | SALE HISTORY
-    |--------------------------------------------------------------------------
-    */
+    {
+
+        $search = trim(
+
+            $request->input('customer', $request->input('search', ''))
+
+        );
+
+        if ($search === '') {
+
+            return response()->json([
+
+                'customers' => [],
+
+            ]);
+
+        }
+
+        $customers = Customer::query()
+
+            ->where(function ($query) use ($search) {
+
+                $query->where('name', 'like', '%' . $search . '%')
+
+                    ->orWhere('phone', 'like', '%' . $search . '%');
+
+            })
+
+            ->orderBy('name')
+
+            ->limit(10)
+
+            ->get([
+
+                'id',
+
+                'name',
+
+                'phone',
+
+            ]);
+
+        return response()->json([
+
+            'customers' => $customers,
+
+        ]);
+
+    }
 
     public function history(Request $request)
+
     {
-        $customerSearch = $request->input('customer');
 
         $query = Sale::with([
+
             'customer',
+
             'user',
+
             'items.medicine',
-            'items.medicineBatch',
-            'prescription.items',
-            'prescription.customer',
+
         ])
+
             ->where('status', 'completed')
+
             ->latest();
 
-        /*
-        |--------------------------------------------------------------------------
-        | CUSTOMER SEARCH
-        |--------------------------------------------------------------------------
-        */
+        if ($request->filled('customer')) {
 
-        if ($customerSearch) {
-            $query->where(function ($q) use ($customerSearch) {
-                $q->where('customer_name', 'like', "%{$customerSearch}%")
-                    ->orWhere('customer_phone', 'like', "%{$customerSearch}%")
-                    ->orWhereHas('customer', function ($customerQuery) use ($customerSearch) {
-                        $customerQuery
-                            ->where('name', 'like', "%{$customerSearch}%")
-                            ->orWhere('phone', 'like', "%{$customerSearch}%");
-                    });
+            $customerSearch = trim($request->input('customer'));
+
+            $query->where(function ($saleQuery) use ($customerSearch) {
+
+                $saleQuery->where(
+
+                    'customer_name',
+
+                    'like',
+
+                    '%' . $customerSearch . '%'
+
+                )
+
+                    ->orWhere(
+
+                        'customer_phone',
+
+                        'like',
+
+                        '%' . $customerSearch . '%'
+
+                    )
+
+                    ->orWhereHas(
+
+                        'customer',
+
+                        function ($customerQuery) use ($customerSearch) {
+
+                            $customerQuery->where(
+
+                                'name',
+
+                                'like',
+
+                                '%' . $customerSearch . '%'
+
+                            )
+
+                                ->orWhere(
+
+                                    'phone',
+
+                                    'like',
+
+                                    '%' . $customerSearch . '%'
+
+                                );
+
+                        }
+
+                    );
+
             });
+
         }
 
         $sales = $query->paginate(20)->withQueryString();
 
-        /*
-        |--------------------------------------------------------------------------
-        | CUSTOMER PROFILE / SUMMARY
-        |--------------------------------------------------------------------------
-        */
+        $statsQuery = Sale::where('status', 'completed');
 
-        $customer = null;
-        $customerStats = null;
+        if ($request->filled('customer')) {
 
-        if ($customerSearch) {
-            $customer = Customer::where('name', 'like', "%{$customerSearch}%")
-                ->orWhere('phone', 'like', "%{$customerSearch}%")
-                ->first();
+            $customerSearch = trim($request->input('customer'));
 
-            if ($customer) {
-                $customerStats = [
-                    'total_sales' => Sale::where('customer_id', $customer->id)
-                        ->where('status', 'completed')
-                        ->count(),
+            $statsQuery->where(function ($saleQuery) use ($customerSearch) {
 
-                    'total_purchased' => Sale::where('customer_id', $customer->id)
-                        ->where('status', 'completed')
-                        ->sum('total_amount'),
+                $saleQuery->where(
 
-                    'last_purchase' => Sale::where('customer_id', $customer->id)
-                        ->where('status', 'completed')
-                        ->latest()
-                        ->first(),
-                ];
-            }
+                    'customer_name',
+
+                    'like',
+
+                    '%' . $customerSearch . '%'
+
+                )
+
+                    ->orWhere(
+
+                        'customer_phone',
+
+                        'like',
+
+                        '%' . $customerSearch . '%'
+
+                    )
+
+                    ->orWhereHas(
+
+                        'customer',
+
+                        function ($customerQuery) use ($customerSearch) {
+
+                            $customerQuery->where(
+
+                                'name',
+
+                                'like',
+
+                                '%' . $customerSearch . '%'
+
+                            )
+
+                                ->orWhere(
+
+                                    'phone',
+
+                                    'like',
+
+                                    '%' . $customerSearch . '%'
+
+                                );
+
+                        }
+
+                    );
+
+            });
+
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | GENERAL SALES SUMMARY
-        |--------------------------------------------------------------------------
-        */
+        $stats = [
 
-        $totalSales = Sale::where('status', 'completed')->count();
+            'total_sales' => $statsQuery->count(),
 
-        $totalPurchased = Sale::where('status', 'completed')
-            ->sum('total_amount');
+            'total_revenue' => $statsQuery->sum('total_amount'),
 
-        $lastPurchase = Sale::where('status', 'completed')
-            ->latest()
-            ->first();
+        ];
 
-        return view('sales.history', compact(
-            'sales',
-            'customer',
-            'customerStats',
-            'totalSales',
-            'totalPurchased',
-            'lastPurchase'
-        ));
+        return view('sales.history', compact('sales', 'stats'));
+
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | SHOW SALE
-    |--------------------------------------------------------------------------
-    */
-
     public function show(Sale $sale)
+
     {
+
         $sale->load([
-            'items.medicine',
-            'items.medicineBatch',
-            'user',
+
             'customer',
-            'prescription.items',
-            'prescription.customer',
+
+            'user',
+
+            'items.medicine',
+
+            'items.medicineBatch',
+
+            'prescription.items.medicine',
+
         ]);
 
         return view('sales.show', compact('sale'));
+
     }
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | RECEIPT
-    |--------------------------------------------------------------------------
-    */
 
     public function receipt(Sale $sale)
+
     {
+
         $sale->load([
-            'items.medicine',
-            'items.medicineBatch',
-            'user',
+
             'customer',
-            'prescription.items',
-            'prescription.customer',
+
+            'user',
+
+            'items.medicine',
+
+            'items.medicineBatch',
+
+            'prescription.items.medicine',
+
         ]);
 
-        return view('sales.receipt', compact('sale'));
+        $mobileReceiptUrl = URL::temporarySignedRoute(
+
+            'sales.mobile-receipt',
+
+            now()->addMinutes(30),
+
+            ['sale' => $sale]
+
+        );
+
+        return view('sales.receipt', compact(
+
+            'sale',
+
+            'mobileReceiptUrl'
+
+        ));
+
     }
 
+    public function mobileReceipt(Sale $sale)
 
-    /*
-    |--------------------------------------------------------------------------
-    | CREATE SALE
-    |--------------------------------------------------------------------------
-    */
+    {
+
+        $sale->load([
+
+            'customer',
+
+            'user',
+
+            'items.medicine',
+
+            'items.medicineBatch',
+
+            'prescription.items.medicine',
+
+        ]);
+
+        return view('sales.mobile-receipt', compact('sale'));
+
+    }
 
     public function store(Request $request)
+
     {
-        /*
-        |--------------------------------------------------------------------------
-        | VALIDATION
-        |--------------------------------------------------------------------------
-        */
+        // The dispensing page sends these payloads as JSON hidden fields.
+        // Convert them to arrays before Laravel validates them.
+        foreach (['items', 'unavailable_items'] as $payloadKey) {
+            $payload = $request->input($payloadKey);
+
+            // Some forms submit these hidden fields as JSON strings; others submit arrays.
+            // Decode JSON strings before Laravel's array validation runs.
+            if (is_string($payload)) {
+                $decodedPayload = json_decode($payload, true);
+
+                // Handle a JSON string that has accidentally been encoded twice.
+                if (is_string($decodedPayload)) {
+                    $decodedPayload = json_decode($decodedPayload, true);
+                }
+
+                if (json_last_error() !== JSON_ERROR_NONE || !is_array($decodedPayload)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "The {$payloadKey} payload is invalid. Please refresh the page and try again.",
+                    ], 422);
+                }
+
+                $request->merge([$payloadKey => $decodedPayload]);
+            } elseif ($payload === null || $payload === '') {
+                $request->merge([$payloadKey => []]);
+            } elseif (!is_array($payload)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "The {$payloadKey} payload must be a valid list.",
+                ], 422);
+            }
+        }
+
+        // The pharmacy queue form does not send a POS subtotal. The controller
+        // calculates the real subtotal from the selected FEFO batches below.
+        if (!$request->has('subtotal') || $request->input('subtotal') === '') {
+            $request->merge(['subtotal' => 0]);
+        }
 
         $validated = $request->validate([
 
             'customer_id' => [
+
                 'nullable',
+
+                'integer',
+
                 'exists:customers,id',
+
             ],
 
             'customer_name' => [
+
                 'nullable',
+
                 'string',
+
                 'max:255',
+
             ],
 
             'customer_phone' => [
+
                 'nullable',
+
                 'string',
+
                 'max:50',
+
+            ],
+
+            'sale_type' => [
+
+                'nullable',
+
+                'string',
+
+                'in:walk_in,hospital_prescription,external_prescription',
+
+            ],
+
+            'prescription_id' => [
+
+                'nullable',
+
+                'integer',
+
+                'exists:prescriptions,id',
+
+            ],
+
+            'prescription_file' => [
+
+                'nullable',
+
+                'required_if:sale_type,external_prescription',
+
+                'file',
+
+                'mimes:jpg,jpeg,png,webp,pdf',
+
+                'max:10240',
+
             ],
 
             'subtotal' => [
+
                 'required',
+
                 'numeric',
+
                 'min:0',
+
             ],
 
             'discount' => [
-                'nullable',
-                'numeric',
-                'min:0',
-            ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | PAYMENT METHOD
-            |--------------------------------------------------------------------------
-            */
+                'nullable',
+
+                'numeric',
+
+                'min:0',
+
+            ],
 
             'payment_method' => [
-                'required',
-                'in:cash,mpesa,card,split',
-            ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | NORMAL PAYMENT AMOUNT
-            |--------------------------------------------------------------------------
-            */
+                'required',
+
+                'string',
+
+                'in:cash,mpesa,card,split',
+
+            ],
 
             'amount_paid' => [
-                'nullable',
+
+                'required',
+
                 'numeric',
+
                 'min:0',
+
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | SPLIT PAYMENT AMOUNTS
-            |--------------------------------------------------------------------------
-            */
-
             'cash_amount' => [
+
                 'nullable',
+
                 'numeric',
+
                 'min:0',
+
             ],
 
             'mpesa_amount' => [
+
                 'nullable',
+
                 'numeric',
+
                 'min:0',
+
             ],
 
             'card_amount' => [
+
                 'nullable',
+
                 'numeric',
+
                 'min:0',
+
+            ],
+
+            'prescriber_name' => [
+
+                'nullable',
+
+                'string',
+
+                'max:255',
+
+            ],
+
+            'prescription_date' => [
+
+                'nullable',
+
+                'date',
+
+            ],
+
+            'prescription_number' => [
+
+                'nullable',
+
+                'string',
+
+                'max:100',
+
             ],
 
             'items' => [
-                'required',
+
+                'nullable',
+
                 'array',
-                'min:1',
+
             ],
 
             'items.*.medicine_id' => [
+
                 'required',
+
+                'integer',
+
                 'exists:medicines,id',
+
             ],
 
             'items.*.quantity' => [
+
                 'required',
+
                 'integer',
+
                 'min:1',
+
             ],
 
-            'items.*.selling_price' => [
-                'required',
-                'numeric',
-                'min:0',
-            ],
+            'items.*.prescription_item_id' => [
 
-            /*
-            |--------------------------------------------------------------------------
-            | DISPENSING INFORMATION
-            |--------------------------------------------------------------------------
-            */
+                'nullable',
+
+                'integer',
+
+                'exists:prescription_items,id',
+
+            ],
 
             'items.*.dosage' => [
+
                 'nullable',
+
                 'string',
+
                 'max:255',
+
             ],
 
             'items.*.frequency' => [
+
                 'nullable',
+
                 'string',
+
                 'max:255',
+
             ],
 
             'items.*.duration' => [
+
                 'nullable',
+
                 'string',
+
                 'max:255',
+
             ],
 
             'items.*.route' => [
+
                 'nullable',
+
                 'string',
+
                 'max:255',
+
             ],
 
             'items.*.instructions' => [
+
                 'nullable',
+
+                'string',
+
+                'max:1000',
+
+            ],
+            'unavailable_items' => [
+                'nullable',
+                'array',
+            ],
+            'unavailable_items.*.prescription_item_id' => [
+                'required',
+                'integer',
+                'exists:prescription_items,id',
+            ],
+            'unavailable_items.*.reason' => [
+                'required',
                 'string',
                 'max:1000',
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | PRESCRIPTION INFORMATION
-            |--------------------------------------------------------------------------
-            */
-
-            'prescriber_name' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-
-            'prescription_date' => [
-                'nullable',
-                'date',
-            ],
-
-            'prescription_number' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
         ]);
 
+        $validated['items'] = $validated['items'] ?? [];
+        $validated['unavailable_items'] = $validated['unavailable_items'] ?? [];
 
-        /*
-        |--------------------------------------------------------------------------
-        | DATABASE TRANSACTION
-        |--------------------------------------------------------------------------
-        */
+        if (empty($validated['items']) && empty($validated['unavailable_items'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Add at least one medicine to dispense or record as unavailable.',
+            ], 422);
+        }
+
+        $storedPrescriptionFile = null;
 
         try {
 
-            $sale = DB::transaction(function () use ($validated, $request) {
+            $sale = DB::transaction(function () use (
 
-                /*
-                |--------------------------------------------------------------------------
-                | CUSTOMER
-                |--------------------------------------------------------------------------
-                */
+                $request,
+
+                $validated,
+
+                &$storedPrescriptionFile
+
+            ) {
+
+                $prescription = null;
+
+                $saleType = $validated['sale_type'] ?? 'walk_in';
+
+                if (
+
+                    $saleType === 'hospital_prescription' &&
+
+                    empty($validated['prescription_id'])
+
+                ) {
+
+                    abort(response()->json([
+
+                        'success' => false,
+
+                        'message' => 'Verify and select a hospital prescription before completing this sale.',
+
+                    ], 422));
+
+                }
+
+                if (
+
+                    $saleType !== 'hospital_prescription' &&
+
+                    !empty($validated['prescription_id'])
+
+                ) {
+
+                    abort(response()->json([
+
+                        'success' => false,
+
+                        'message' => 'A hospital prescription can only be attached to a hospital prescription sale.',
+
+                    ], 422));
+
+                }
+
+                if (!empty($validated['prescription_id'])) {
+
+                    $prescription = Prescription::where(
+
+                        'id',
+
+                        $validated['prescription_id']
+
+                    )
+
+                        ->lockForUpdate()
+
+                        ->firstOrFail();
+
+                    $prescription->load([
+
+                        'customer',
+
+                        'items',
+
+                    ]);
+
+                    if (!in_array(
+
+                        $prescription->status,
+
+                        ['verified', 'partially_dispensed'],
+
+                        true
+
+                    )) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => $prescription->status === 'dispensed'
+
+                                ? 'This prescription has already been fully dispensed.'
+
+                                : 'The hospital prescription must be verified before completing the sale.',
+
+                        ], 422));
+
+                    }
+
+                    if (!$prescription->verified) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => 'Verify the hospital prescription before dispensing.',
+
+                        ], 422));
+
+                    }
+
+                    if ($prescription->items->isEmpty()) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => 'This prescription has no medicines.',
+
+                        ], 422));
+
+                    }
+
+                }
 
                 $customerId = $validated['customer_id'] ?? null;
 
-                if (!$customerId && !empty($validated['customer_phone'])) {
+                if ($prescription) {
 
-                    $customer = Customer::firstOrCreate(
-                        [
-                            'phone' => $validated['customer_phone'],
-                        ],
-                        [
-                            'name' => $validated['customer_name'] ?? 'Walk-in Customer',
-                        ]
-                    );
+                    $customerId = $prescription->customer_id;
 
-                    $customerId = $customer->id;
                 }
 
+                if (
+
+                    !$customerId &&
+
+                    !empty($validated['customer_phone'])
+
+                ) {
+
+                    $existingCustomer = Customer::where(
+
+                        'phone',
+
+                        $validated['customer_phone']
+
+                    )->first();
+
+                    if ($existingCustomer) {
+
+                        $customerId = $existingCustomer->id;
+
+                    } else {
+
+                        $customer = Customer::create([
+
+                            'name' => $validated['customer_name'] ?? 'Customer',
+
+                            'phone' => $validated['customer_phone'],
+
+                        ]);
+
+                        $customerId = $customer->id;
+
+                    }
+
+                }
+
+                if ($prescription && !$customerId) {
+
+                    abort(response()->json([
+
+                        'success' => false,
+
+                        'message' => 'The hospital prescription is not linked to a customer.',
+
+                    ], 422));
+
+                }
+
+                // Unavailable records are only valid for a verified hospital prescription.
+                $unavailableItemIds = [];
+
+                foreach ($validated['unavailable_items'] as $unavailableItem) {
+                    if (!$prescription || $saleType !== 'hospital_prescription') {
+                        abort(response()->json([
+                            'success' => false,
+                            'message' => 'Unavailable medicines can only be recorded against a hospital prescription.',
+                        ], 422));
+                    }
+
+                    $unavailablePrescriptionItem = $prescription->items->firstWhere(
+                        'id',
+                        (int) $unavailableItem['prescription_item_id']
+                    );
+
+                    if (!$unavailablePrescriptionItem) {
+                        abort(response()->json([
+                            'success' => false,
+                            'message' => 'An unavailable item does not belong to the selected hospital prescription.',
+                        ], 422));
+                    }
+
+                    $unavailablePrescriptionItem = PrescriptionItem::where(
+                        'id',
+                        $unavailablePrescriptionItem->id
+                    )->lockForUpdate()->firstOrFail();
+
+                    $remainingPrescribed = (int) $unavailablePrescriptionItem->quantity_prescribed
+                        - (int) $unavailablePrescriptionItem->quantity_dispensed;
+
+                    if ($remainingPrescribed <= 0) {
+                        abort(response()->json([
+                            'success' => false,
+                            'message' => 'A fully dispensed medicine cannot be marked unavailable.',
+                        ], 422));
+                    }
+
+                    if (in_array($unavailablePrescriptionItem->id, $unavailableItemIds, true)) {
+                        abort(response()->json([
+                            'success' => false,
+                            'message' => 'A prescription item cannot be marked unavailable more than once in the same submission.',
+                        ], 422));
+                    }
+
+                    $unavailableItemIds[] = $unavailablePrescriptionItem->id;
+                }
+
+                foreach ($validated['items'] as $dispensingItem) {
+                    if (
+                        !empty($dispensingItem['prescription_item_id']) &&
+                        in_array((int) $dispensingItem['prescription_item_id'], $unavailableItemIds, true)
+                    ) {
+                        abort(response()->json([
+                            'success' => false,
+                            'message' => 'The same prescription item cannot be dispensed and marked unavailable in one submission.',
+                        ], 422));
+                    }
+                }
+
+                foreach ($validated['unavailable_items'] as $unavailableItem) {
+                    $unavailablePrescriptionItem = $prescription->items->firstWhere(
+                        'id',
+                        (int) $unavailableItem['prescription_item_id']
+                    );
+
+                    DB::table('prescription_unavailability_records')->insert([
+                        'prescription_id' => $prescription->id,
+                        'prescription_item_id' => $unavailablePrescriptionItem->id,
+                        'medicine_id' => $unavailablePrescriptionItem->medicine_id,
+                        'reason' => trim($unavailableItem['reason']),
+                        'recorded_by' => auth()->id(),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                // If nothing can be dispensed, save the unavailability records without creating a zero-value sale.
+                if (empty($validated['items'])) {
+                    return [
+                        'unavailable_only' => true,
+                        'prescription_id' => $prescription->id,
+                        'message' => 'Unavailable medicines and reasons have been recorded. No sale was created because no medicine was dispensed.',
+                    ];
+                }
 
                 /*
-                |--------------------------------------------------------------------------
-                | SUBTOTAL
-                |--------------------------------------------------------------------------
-                */
+
+                 * Validate every hospital prescription item before
+
+                 * creating the sale or deducting any stock.
+
+                 */
+
+                $processedPrescriptionItems = [];
 
                 $subtotal = 0;
 
                 foreach ($validated['items'] as $item) {
 
+                    $medicine = Medicine::findOrFail(
+
+                        $item['medicine_id']
+
+                    );
+
+                    $prescriptionItem = null;
+
+                    if ($prescription) {
+
+                        if (empty($item['prescription_item_id'])) {
+
+                            abort(response()->json([
+
+                                'success' => false,
+
+                                'message' => "Every medicine sold against a hospital prescription must be linked to its prescribed item: {$medicine->name}.",
+
+                            ], 422));
+
+                        }
+
+                        $prescriptionItem = $prescription->items->firstWhere(
+
+                            'id',
+
+                            (int) $item['prescription_item_id']
+
+                        );
+
+                        if (!$prescriptionItem) {
+
+                            abort(response()->json([
+
+                                'success' => false,
+
+                                'message' => 'The selected prescription item does not belong to this hospital prescription.',
+
+                            ], 422));
+
+                        }
+
+                        $prescriptionItem = PrescriptionItem::where(
+
+                            'id',
+
+                            $prescriptionItem->id
+
+                        )
+
+                            ->lockForUpdate()
+
+                            ->firstOrFail();
+
+                        if (
+
+                            (int) $prescriptionItem->medicine_id
+
+                            !== (int) $medicine->id
+
+                        ) {
+
+                            abort(response()->json([
+
+                                'success' => false,
+
+                                'message' => 'The selected medicine does not match the prescription.',
+
+                            ], 422));
+
+                        }
+
+                        if (in_array(
+
+                            $prescriptionItem->id,
+
+                            $processedPrescriptionItems,
+
+                            true
+
+                        )) {
+
+                            abort(response()->json([
+
+                                'success' => false,
+
+                                'message' => 'A prescription item cannot be added more than once.',
+
+                            ], 422));
+
+                        }
+
+                        $remainingPrescribed =
+
+                            (int) $prescriptionItem->quantity_prescribed
+
+                            - (int) $prescriptionItem->quantity_dispensed;
+
+                        if ($remainingPrescribed <= 0) {
+
+                            abort(response()->json([
+
+                                'success' => false,
+
+                                'message' => "There is no remaining prescribed quantity for {$medicine->name}.",
+
+                            ], 422));
+
+                        }
+
+                        if ((int) $item['quantity'] > $remainingPrescribed) {
+
+                            abort(response()->json([
+
+                                'success' => false,
+
+                                'message' => "Quantity exceeds the remaining prescribed quantity for {$medicine->name}.",
+
+                            ], 422));
+
+                        }
+
+                        $processedPrescriptionItems[] =
+
+                            $prescriptionItem->id;
+
+                    }
+
+                    $batch = MedicineBatch::where(
+
+                        'medicine_id',
+
+                        $medicine->id
+
+                    )
+
+                        ->where('status', true)
+
+                        ->where('quantity', '>', 0)
+
+                        ->whereDate('expiry_date', '>=', now())
+
+                        ->orderBy('expiry_date', 'asc')
+
+                        ->first();
+
+                    if (!$batch) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => "No available batch found for {$medicine->name}.",
+
+                        ], 422));
+
+                    }
+
+                    if (
+
+                        $medicine->prescription_required &&
+
+                        !$prescriptionItem &&
+
+                        !$request->hasFile('prescription_file')
+
+                    ) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => "A prescription is required for {$medicine->name}.",
+
+                        ], 422));
+
+                    }
+
                     $subtotal +=
-                        $item['selling_price'] *
-                        $item['quantity'];
+
+                        (float) $batch->selling_price
+
+                        * (int) $item['quantity'];
+
                 }
 
-
-                /*
-                |--------------------------------------------------------------------------
-                | DISCOUNT
-                |--------------------------------------------------------------------------
-                */
-
-                $discount = $validated['discount'] ?? 0;
+                $discount = (float) ($validated['discount'] ?? 0);
 
                 if ($discount > $subtotal) {
-                    throw new \Exception(
-                        'Discount cannot be greater than the subtotal.'
-                    );
+
+                    abort(response()->json([
+
+                        'success' => false,
+
+                        'message' => 'Discount cannot be greater than the subtotal.',
+
+                    ], 422));
+
                 }
 
+                $totalAmount = $subtotal - $discount;
 
-                /*
-                |--------------------------------------------------------------------------
-                | TOTAL
-                |--------------------------------------------------------------------------
-                */
-
-                $totalAmount =
-                    $subtotal - $discount;
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | PAYMENT
-                |--------------------------------------------------------------------------
-                */
-
-                $paymentMethod =
-                    $validated['payment_method'];
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | DEFAULT PAYMENT AMOUNTS
-                |--------------------------------------------------------------------------
-                */
+                $paymentMethod = $validated['payment_method'];
 
                 $cashAmount = 0;
 
@@ -479,561 +1390,570 @@ class SaleController extends Controller
 
                 $cardAmount = 0;
 
-
-                /*
-                |--------------------------------------------------------------------------
-                | SINGLE PAYMENT
-                |--------------------------------------------------------------------------
-                */
-
                 if ($paymentMethod === 'cash') {
 
-                    $cashAmount =
-                        $validated['amount_paid'] ?? 0;
+                    $cashAmount = (float) $validated['amount_paid'];
 
                 } elseif ($paymentMethod === 'mpesa') {
 
-                    $mpesaAmount =
-                        $validated['amount_paid'] ?? 0;
+                    $mpesaAmount = (float) $validated['amount_paid'];
 
                 } elseif ($paymentMethod === 'card') {
 
-                    $cardAmount =
-                        $validated['amount_paid'] ?? 0;
+                    $cardAmount = (float) $validated['amount_paid'];
 
-                } elseif ($paymentMethod === 'split') {
+                } else {
 
-                    $cashAmount =
-                        $validated['cash_amount'] ?? 0;
+                    $cashAmount = (float) ($validated['cash_amount'] ?? 0);
 
-                    $mpesaAmount =
-                        $validated['mpesa_amount'] ?? 0;
+                    $mpesaAmount = (float) ($validated['mpesa_amount'] ?? 0);
 
-                    $cardAmount =
-                        $validated['card_amount'] ?? 0;
+                    $cardAmount = (float) ($validated['card_amount'] ?? 0);
+
                 }
 
+                $amountPaid = $cashAmount + $mpesaAmount + $cardAmount;
 
-                /*
-                |--------------------------------------------------------------------------
-                | TOTAL AMOUNT PAID
-                |--------------------------------------------------------------------------
-                */
+                if ($paymentMethod === 'split') {
 
-                $amountPaid =
-                    $cashAmount +
-                    $mpesaAmount +
-                    $cardAmount;
+                    if (abs($amountPaid - $totalAmount) > 0.01) {
 
+                        abort(response()->json([
 
-                /*
-                |--------------------------------------------------------------------------
-                | CHECK PAYMENT
-                |--------------------------------------------------------------------------
-                */
+                            'success' => false,
 
-                if ($amountPaid < $totalAmount) {
+                            'message' => 'Split payment must equal the total amount exactly.',
 
-                    throw new \Exception(
-                        'Amount paid is less than the total amount.'
-                    );
+                        ], 422));
+
+                    }
+
+                    $changeAmount = 0;
+
+                } else {
+
+                    if ($amountPaid < $totalAmount) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => 'Amount paid is less than the total amount.',
+
+                        ], 422));
+
+                    }
+
+                    $changeAmount = max(0, $amountPaid - $totalAmount);
+
                 }
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | CHANGE
-                |--------------------------------------------------------------------------
-                */
-
-                $changeAmount =
-                    max(
-                        0,
-                        $amountPaid - $totalAmount
-                    );
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | SALE NUMBER
-                |--------------------------------------------------------------------------
-                */
-
-                $saleNumber =
-                    'SALE-' .
-                    now()->format('YmdHis') .
-                    '-' .
-                    strtoupper(
-                        substr(uniqid(), -4)
-                    );
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | CREATE SALE
-                |--------------------------------------------------------------------------
-                */
 
                 $sale = Sale::create([
 
-                    'sale_number' =>
-                        $saleNumber,
+                    'sale_number' => 'SALE-'
 
-                    'user_id' =>
-                        auth()->id(),
+                        . now()->format('YmdHis')
 
-                    'customer_id' =>
-                        $customerId,
+                        . '-'
 
-                    'customer_name' =>
-                        $validated['customer_name'] ?? null,
+                        . strtoupper(substr(uniqid(), -4)),
 
-                    'customer_phone' =>
-                        $validated['customer_phone'] ?? null,
+                    'user_id' => auth()->id(),
 
-                    'subtotal' =>
-                        $subtotal,
+                    'customer_id' => $customerId,
 
-                    'discount' =>
-                        $discount,
+                    'prescription_id' => $prescription?->id,
 
-                    'total_amount' =>
-                        $totalAmount,
+                    'customer_name' => $validated['customer_name']
 
-                    'payment_method' =>
-                        $paymentMethod,
+                        ?? $prescription?->customer?->name
 
-                    'amount_paid' =>
-                        $amountPaid,
+                        ?? 'Walk-in Customer',
 
-                    'cash_amount' =>
-                        $cashAmount,
+                    'customer_phone' => $validated['customer_phone']
 
-                    'mpesa_amount' =>
-                        $mpesaAmount,
+                        ?? $prescription?->customer?->phone,
 
-                    'card_amount' =>
-                        $cardAmount,
+                    'subtotal' => $subtotal,
 
-                    'change_amount' =>
-                        $changeAmount,
+                    'discount' => $discount,
 
-                    'status' =>
-                        'completed',
+                    'total_amount' => $totalAmount,
+
+                    'payment_method' => $paymentMethod,
+
+                    'amount_paid' => $amountPaid,
+
+                    'cash_amount' => $cashAmount,
+
+                    'mpesa_amount' => $mpesaAmount,
+
+                    'card_amount' => $cardAmount,
+
+                    'change_amount' => $changeAmount,
+
+                    'status' => 'completed',
+
                 ]);
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | PRESCRIPTION FLAG
-                |--------------------------------------------------------------------------
-                */
-
-                $hasPrescriptionItems = false;
-
-
-                /*
-                |--------------------------------------------------------------------------
-                | PROCESS EACH SALE ITEM
-                |--------------------------------------------------------------------------
-                */
 
                 foreach ($validated['items'] as $item) {
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | MEDICINE
-                    |--------------------------------------------------------------------------
-                    */
-
                     $medicine = Medicine::findOrFail(
+
                         $item['medicine_id']
+
                     );
 
+                    $quantityToSell = (int) $item['quantity'];
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | PRESCRIPTION CHECK
-                    |--------------------------------------------------------------------------
-                    */
+                    $prescriptionItem = null;
 
-                    $isPrescriptionRequired =
-                        (bool) $medicine->prescription_required;
+                    if ($prescription) {
 
+                        $prescriptionItem = $prescription->items->firstWhere(
 
-                    if ($isPrescriptionRequired) {
+                            'id',
 
-                        $hasPrescriptionItems = true;
+                            (int) $item['prescription_item_id']
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | REQUIRED PRESCRIPTION DETAILS
-                        |--------------------------------------------------------------------------
-                        */
-
-                        if (
-                            empty($validated['prescriber_name']) ||
-                            empty($item['dosage']) ||
-                            empty($item['frequency']) ||
-                            empty($item['duration'])
-                        ) {
-                            throw new \Exception(
-                                'Prescription details are required for ' .
-                                $medicine->name .
-                                '.'
-                            );
-                        }
-                    }
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | FEFO BATCH SELECTION
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $remainingQuantity =
-                        $item['quantity'];
-
-
-                    $batches = MedicineBatch::where(
-                        'medicine_id',
-                        $medicine->id
-                    )
-                        ->where('quantity', '>', 0)
-                        ->where('status', true)
-                        ->whereDate(
-                            'expiry_date',
-                            '>=',
-                            now()->toDateString()
-                        )
-                        ->orderBy('expiry_date')
-                        ->lockForUpdate()
-                        ->get();
-
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | CHECK AVAILABLE STOCK
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $availableQuantity =
-                        $batches->sum('quantity');
-
-
-                    if (
-                        $availableQuantity <
-                        $remainingQuantity
-                    ) {
-                        throw new \Exception(
-                            'Insufficient stock for ' .
-                            $medicine->name .
-                            '. Available: ' .
-                            $availableQuantity .
-                            ', requested: ' .
-                            $remainingQuantity .
-                            '.'
                         );
+
+                        $prescriptionItem = PrescriptionItem::where(
+
+                            'id',
+
+                            $prescriptionItem->id
+
+                        )
+
+                            ->lockForUpdate()
+
+                            ->firstOrFail();
+
+                    } elseif (!empty($item['prescription_item_id'])) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => 'A hospital prescription item cannot be used for this sale.',
+
+                        ], 422));
+
                     }
 
+                    $remainingQuantityToSell = $quantityToSell;
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | DISPENSE USING FEFO
-                    |--------------------------------------------------------------------------
-                    */
+                    while ($remainingQuantityToSell > 0) {
 
-                    foreach ($batches as $batch) {
+                        $batch = MedicineBatch::where(
 
-                        if ($remainingQuantity <= 0) {
-                            break;
+                            'medicine_id',
+
+                            $medicine->id
+
+                        )
+
+                            ->where('status', true)
+
+                            ->where('quantity', '>', 0)
+
+                            ->whereDate('expiry_date', '>=', now())
+
+                            ->orderBy('expiry_date', 'asc')
+
+                            ->lockForUpdate()
+
+                            ->first();
+
+                        if (!$batch) {
+
+                            abort(response()->json([
+
+                                'success' => false,
+
+                                'message' => "Insufficient stock for {$medicine->name}.",
+
+                            ], 422));
+
                         }
 
+                        $quantityFromBatch = min(
 
-                        $quantityFromBatch =
-                            min(
-                                $remainingQuantity,
-                                $batch->quantity
-                            );
+                            $remainingQuantityToSell,
 
+                            (int) $batch->quantity
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | CREATE SALE ITEM
-                        |--------------------------------------------------------------------------
-                        */
-SaleItem::create([
+                        );
 
-    'sale_id' =>
-        $sale->id,
+                        $itemSubtotal =
 
-    'medicine_id' =>
-        $medicine->id,
+                            (float) $batch->selling_price
 
-    'medicine_batch_id' =>
-        $batch->id,
+                            * $quantityFromBatch;
 
-    'quantity' =>
-        $quantityFromBatch,
+                        SaleItem::create([
 
-    'unit_price' =>
-        $item['selling_price'],
+                            'sale_id' => $sale->id,
 
-    'subtotal' =>
-        $item['selling_price'] *
-        $quantityFromBatch,
+                            'medicine_id' => $medicine->id,
 
-    'dosage' =>
-        $item['dosage'] ?? null,
+                            'medicine_batch_id' => $batch->id,
 
-    'frequency' =>
-        $item['frequency'] ?? null,
+                            'quantity' => $quantityFromBatch,
 
-    'duration' =>
-        $item['duration'] ?? null,
+                            'unit_price' => $batch->selling_price,
 
-    'route' =>
-        $item['route'] ?? null,
+                            'subtotal' => $itemSubtotal,
 
-    'instructions' =>
-        $item['instructions'] ?? null,
-]);
+                            'prescription_item_id' => $prescriptionItem?->id,
 
+                            'dosage' => $item['dosage']
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | REDUCE STOCK
-                        |--------------------------------------------------------------------------
-                        */
+                                ?? $prescriptionItem?->dosage,
 
-                        $batch->quantity -=
-                            $quantityFromBatch;
+                            'frequency' => $item['frequency']
+
+                                ?? $prescriptionItem?->frequency,
+
+                            'duration' => $item['duration']
+
+                                ?? $prescriptionItem?->duration,
+
+                            'route' => $item['route']
+
+                                ?? $prescriptionItem?->route,
+
+                            'instructions' => $item['instructions']
+
+                                ?? $prescriptionItem?->instructions,
+
+                        ]);
+
+                        $batch->quantity -= $quantityFromBatch;
 
                         $batch->save();
 
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | STOCK MOVEMENT
-                        |--------------------------------------------------------------------------
-                        */
-
                         StockMovement::create([
 
-                            'medicine_id' =>
-                                $medicine->id,
+                            'medicine_id' => $medicine->id,
 
-                            'medicine_batch_id' =>
-                                $batch->id,
+                            'medicine_batch_id' => $batch->id,
 
-                            'type' =>
-                                'stock_out',
+                            'type' => 'stock_out',
 
-                            'quantity' =>
-                                $quantityFromBatch,
+                            'quantity' => $quantityFromBatch,
 
-                            'reference_type' =>
-                                Sale::class,
+                            'reference_type' => Sale::class,
 
-                            'reference_id' =>
-                                $sale->id,
+                            'reference_id' => $sale->id,
 
-                            'notes' =>
-                                'Sale ' .
-                                $sale->sale_number,
+                            'notes' => 'Sale ' . $sale->sale_number,
+
+                            'user_id' => auth()->id(),
+
                         ]);
 
+                        $remainingQuantityToSell -= $quantityFromBatch;
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | UPDATE REMAINING QUANTITY
-                        |--------------------------------------------------------------------------
-                        */
-
-                        $remainingQuantity -=
-                            $quantityFromBatch;
                     }
+
+                    if ($prescriptionItem) {
+
+                        $prescriptionItem->quantity_dispensed =
+
+                            (int) $prescriptionItem->quantity_dispensed
+
+                            + $quantityToSell;
+
+                        $prescriptionItem->save();
+
+                    }
+
                 }
 
+                if ($prescription) {
 
-                /*
-                |--------------------------------------------------------------------------
-                | CREATE PRESCRIPTION
-                |--------------------------------------------------------------------------
-                */
+                    $prescription->refresh();
 
-                if ($hasPrescriptionItems) {
+                    $totalPrescriptionItems = $prescription->items()->count();
 
-                    $prescription =
-                        Prescription::create([
+                    $fullyDispensedItems = $prescription->items()
 
-                            'sale_id' =>
-                                $sale->id,
+                        ->whereColumn(
 
-                            'customer_id' =>
-                                $customerId,
+                            'quantity_dispensed',
 
-                            'prescriber_name' =>
-                                $validated['prescriber_name'],
+                            '>=',
 
-                            'prescription_date' =>
-                                $validated['prescription_date']
-                                ?? now()->toDateString(),
+                            'quantity_prescribed'
 
-                            'prescription_number' =>
-                                $validated['prescription_number']
-                                ?? null,
-                        ]);
+                        )
 
+                        ->count();
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | PRESCRIPTION ITEMS
-                    |--------------------------------------------------------------------------
-                    */
+                    $hasDispensedQuantity = $prescription->items()
+
+                        ->where('quantity_dispensed', '>', 0)
+
+                        ->exists();
+
+                    if (
+
+                        $totalPrescriptionItems > 0 &&
+
+                        $fullyDispensedItems === $totalPrescriptionItems
+
+                    ) {
+
+                        $prescription->status = 'dispensed';
+
+                    } elseif ($hasDispensedQuantity) {
+
+                        $prescription->status = 'partially_dispensed';
+
+                    } else {
+
+                        $prescription->status = 'verified';
+
+                    }
+
+                    $prescription->save();
+
+                }
+
+                $hasPrescriptionRequiredMedicine = false;
+
+                foreach ($validated['items'] as $item) {
+
+                    $medicine = Medicine::findOrFail(
+
+                        $item['medicine_id']
+
+                    );
+
+                    if ($medicine->prescription_required) {
+
+                        $hasPrescriptionRequiredMedicine = true;
+
+                        break;
+
+                    }
+
+                }
+
+                $hasExternalPrescriptionFile = $request->hasFile(
+
+                    'prescription_file'
+
+                );
+
+                $shouldSaveExternalPrescription =
+
+                    !$prescription &&
+
+                    (
+
+                        $hasPrescriptionRequiredMedicine ||
+
+                        (
+
+                            $saleType === 'external_prescription' &&
+
+                            $hasExternalPrescriptionFile
+
+                        )
+
+                    );
+
+                if ($shouldSaveExternalPrescription) {
+
+                    if (!$hasExternalPrescriptionFile) {
+
+                        abort(response()->json([
+
+                            'success' => false,
+
+                            'message' => $saleType === 'external_prescription'
+
+                                ? 'Please upload or capture the external prescription before completing the sale.'
+
+                                : 'A prescription file is required for prescription medicines.',
+
+                        ], 422));
+
+                    }
+
+                    $storedPrescriptionFile = $request
+
+                        ->file('prescription_file')
+
+                        ->store('prescriptions', 'public');
+
+                    $externalPrescription = Prescription::create([
+
+                        'customer_id' => $customerId,
+
+                        'sale_id' => $sale->id,
+
+                        'prescription_number' =>
+
+                            $validated['prescription_number'] ?? null,
+
+                        'prescriber_name' =>
+
+                            !empty(trim($validated['prescriber_name'] ?? ''))
+                                ? trim($validated['prescriber_name'])
+                                : 'Unknown Prescriber',
+
+                        'prescription_date' =>
+
+                            $validated['prescription_date'] ?? null,
+
+                        'prescription_file' => $storedPrescriptionFile,
+
+                        'status' => 'dispensed',
+
+                    ]);
 
                     foreach ($validated['items'] as $item) {
 
-                        $medicine =
-                            Medicine::find(
-                                $item['medicine_id']
-                            );
+                        $medicine = Medicine::findOrFail(
 
+                            $item['medicine_id']
 
-                        if (
-                            !$medicine ||
-                            !$medicine->prescription_required
-                        ) {
+                        );
+
+                        if (!$medicine->prescription_required) {
+
                             continue;
+
                         }
-
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | PRESCRIBED QUANTITY
-                        |--------------------------------------------------------------------------
-                        */
-
-                        $quantityPrescribed =
-                            $item['quantity'];
-
-
-                        /*
-                        |--------------------------------------------------------------------------
-                        | CREATE PRESCRIPTION ITEM
-                        |--------------------------------------------------------------------------
-                        */
 
                         PrescriptionItem::create([
 
-                            'prescription_id' =>
-                                $prescription->id,
+                            'prescription_id' => $externalPrescription->id,
 
-                            'medicine_id' =>
-                                $medicine->id,
+                            'medicine_id' => $medicine->id,
 
-                            'quantity_prescribed' =>
-                                $quantityPrescribed,
+                            'quantity_prescribed' => $item['quantity'],
 
-                            'dosage' =>
-                                $item['dosage'] ?? null,
+                            'quantity_dispensed' => $item['quantity'],
 
-                            'frequency' =>
-                                $item['frequency'] ?? null,
+                            'dosage' => $item['dosage'] ?? null,
 
-                            'duration' =>
-                                $item['duration'] ?? null,
+                            'frequency' => $item['frequency'] ?? null,
 
-                            'route' =>
-                                $item['route'] ?? null,
+                            'duration' => $item['duration'] ?? null,
 
-                            'instructions' =>
-                                $item['instructions'] ?? null,
+                            'route' => $item['route'] ?? null,
+
+                            'instructions' => $item['instructions'] ?? null,
+
                         ]);
+
                     }
+
+                    $sale->prescription_id = $externalPrescription->id;
+
+                    $sale->save();
+
                 }
 
+                return $sale->load([
 
-                return $sale;
+                    'customer',
+
+                    'user',
+
+                    'items.medicine',
+
+                    'items.medicineBatch',
+
+                    'prescription.items.medicine',
+
+                ]);
+
             });
 
-
-            /*
-            |--------------------------------------------------------------------------
-            | LOAD SALE RELATIONSHIPS
-            |--------------------------------------------------------------------------
-            */
-
-            $sale->load([
-                'items.medicine',
-                'items.medicineBatch',
-                'user',
-                'customer',
-                'prescription.items',
-                'prescription.customer',
-            ]);
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | SUCCESS RESPONSE
-            |--------------------------------------------------------------------------
-            */
+            if (is_array($sale) && !empty($sale['unavailable_only'])) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $sale['message'],
+                    'prescription_id' => $sale['prescription_id'],
+                    'redirect' => route('pharmacy.queue.show', $sale['prescription_id']),
+                ]);
+            }
 
             return response()->json([
 
-                'success' =>
-                    true,
+                'success' => true,
 
-                'message' =>
-                    'Sale completed successfully.',
+                'message' => 'Sale completed successfully.',
 
-                'sale' =>
-                    $sale,
+                'sale' => $sale,
+
+                'sale_id' => $sale->id,
+
+                'receipt_url' => route('sales.receipt', $sale),
+
+                'redirect' => route('sales.receipt', $sale),
 
                 'payment' => [
 
-                    'method' =>
-                        $sale->payment_method,
+                    'method' => $sale->payment_method,
 
-                    'amount_paid' =>
-                        $sale->amount_paid,
+                    'amount_paid' => $sale->amount_paid,
 
-                    'cash_amount' =>
-                        $sale->cash_amount,
+                    'cash_amount' => $sale->cash_amount,
 
-                    'mpesa_amount' =>
-                        $sale->mpesa_amount,
+                    'mpesa_amount' => $sale->mpesa_amount,
 
-                    'card_amount' =>
-                        $sale->card_amount,
+                    'card_amount' => $sale->card_amount,
 
-                    'change_amount' =>
-                        $sale->change_amount,
+                    'change_amount' => $sale->change_amount,
+
                 ],
+
             ]);
-        }
 
+        } catch (\Throwable $e) {
 
-        /*
-        |--------------------------------------------------------------------------
-        | ERROR HANDLING
-        |--------------------------------------------------------------------------
-        */
+            if ($storedPrescriptionFile) {
 
-        catch (\Exception $e) {
+                Storage::disk('public')->delete(
+
+                    $storedPrescriptionFile
+
+                );
+
+            }
+
+            // abort(response()->json(...)) throws HttpResponseException.
+            // Return its original response instead of swallowing it and showing
+            // an empty exception message in the browser.
+            if ($e instanceof \Illuminate\Http\Exceptions\HttpResponseException) {
+                return $e->getResponse();
+            }
+
+            if ($e instanceof \Illuminate\Validation\ValidationException) {
+                throw $e;
+            }
+
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpException) {
+                throw $e;
+            }
 
             return response()->json([
 
-                'success' =>
-                    false,
+                'success' => false,
 
-                'message' =>
-                    $e->getMessage(),
+                'message' => $e->getMessage(),
 
             ], 422);
-        }
-    }
-}
 
+        }
+
+    }
+
+}

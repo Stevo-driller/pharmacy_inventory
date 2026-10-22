@@ -111,6 +111,11 @@
                     Cashier
                 </option>
 
+                <option value="doctor"
+                    {{ old('role', $user->role) === 'doctor' ? 'selected' : '' }}>
+                    Doctor
+                </option>
+
             </select>
 
             @error('role')

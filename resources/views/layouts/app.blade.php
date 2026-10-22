@@ -725,7 +725,21 @@
 
         {{-- Dashboard --}}
         @auth
-            <a href="{{ route('dashboard') }}">Dashboard</a>
+
+            @if(Auth::user()->role === 'doctor')
+
+                <a href="{{ route('doctor.dashboard') }}">
+                    Dashboard
+                </a>
+
+            @else
+
+                <a href="{{ route('dashboard') }}">
+                    Dashboard
+                </a>
+
+            @endif
+
         @endauth
 
 
@@ -759,7 +773,6 @@
                 <a href="{{ route('sales.index') }}">POS</a>
             @endif
         @endauth
-
 
 
         {{-- Sales History --}}

@@ -28,7 +28,6 @@ class AuthController extends Controller
                 'required',
                 'email',
             ],
-
             'password' => [
                 'required',
             ],
@@ -46,7 +45,6 @@ class AuthController extends Controller
          * Email does not exist.
          */
         if (!$user) {
-
             return back()
                 ->withErrors([
                     'email' =>
@@ -64,7 +62,6 @@ class AuthController extends Controller
             $credentials['password'],
             $user->password
         )) {
-
             return back()
                 ->withErrors([
                     'password' =>
@@ -84,15 +81,49 @@ class AuthController extends Controller
         );
 
         /*
-         * Prevent session fixation.
+         * Regenerate the session ID to help prevent
+         * session fixation attacks.
          */
         $request->session()->regenerate();
 
-        return redirect()->intended(
-            route('dashboard')
-        );
-    }
+        /*
+         * Redirect each role to its correct dashboard.
+         *
+         * Do not use redirect()->intended() here because
+         * a previously requested URL could send the user
+         * to a page their role cannot access.
+         */
+        if ($user->role === 'doctor') {
+            return redirect()->route('doctor.dashboard');
+        }
 
+        if (in_array(
+            $user->role,
+            ['admin', 'pharmacist', 'cashier'],
+            true
+        )) {
+            return redirect()->route('dashboard');
+        }
+
+        /*
+         * Reject unexpected roles instead of sending
+         * unauthorized users to a protected dashboard.
+         */
+        Auth::logout();
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()
+            ->route('login')
+            ->withErrors([
+                'email' =>
+                    'Your account does not have a recognized role. Please contact the administrator.',
+            ])
+            ->withInput(
+                $request->only('email')
+            );
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -107,7 +138,6 @@ class AuthController extends Controller
     {
         return view('auth.forgot-password');
     }
-
 
     /**
      * Handle password reset request.
@@ -129,11 +159,9 @@ class AuthController extends Controller
         )->first();
 
         /*
-         * If the account does not exist,
-         * don't expose unnecessary information.
+         * Avoid exposing unnecessary account information.
          */
         if (!$user) {
-
             return back()
                 ->with(
                     'status',
@@ -143,10 +171,8 @@ class AuthController extends Controller
         }
 
         /*
-         * Account exists.
-         *
-         * The administrator must generate the code
-         * from User Management.
+         * The administrator generates the reset code
+         * through User Management.
          */
         return redirect()
             ->route('password.verify')
@@ -160,17 +186,13 @@ class AuthController extends Controller
             );
     }
 
-
     /**
      * Show reset-code verification page.
      */
     public function showVerifyResetCode()
     {
-        return view(
-            'auth.verify-reset-code'
-        );
+        return view('auth.verify-reset-code');
     }
-
 
     /**
      * Verify the 6-digit code and change password.
@@ -182,12 +204,10 @@ class AuthController extends Controller
                 'required',
                 'email',
             ],
-
             'code' => [
                 'required',
                 'digits:6',
             ],
-
             'password' => [
                 'required',
                 'string',
@@ -205,7 +225,6 @@ class AuthController extends Controller
         )->first();
 
         if (!$user) {
-
             return back()
                 ->withErrors([
                     'email' =>
@@ -217,8 +236,7 @@ class AuthController extends Controller
         }
 
         /*
-         * Find the reset code belonging
-         * to this user.
+         * Find the reset code belonging to this user.
          */
         $resetCode = PasswordResetCode::where(
             'user_id',
@@ -226,7 +244,6 @@ class AuthController extends Controller
         )->first();
 
         if (!$resetCode) {
-
             return back()
                 ->withErrors([
                     'code' =>
@@ -238,10 +255,9 @@ class AuthController extends Controller
         }
 
         /*
-         * Check expiry.
+         * Check whether the reset code has expired.
          */
         if ($resetCode->expires_at->isPast()) {
-
             $resetCode->delete();
 
             return back()
@@ -255,14 +271,13 @@ class AuthController extends Controller
         }
 
         /*
-         * Check the code against the hashed
-         * database value.
+         * Compare the submitted code with its
+         * hashed database value.
          */
         if (!Hash::check(
             $validated['code'],
             $resetCode->code
         )) {
-
             return back()
                 ->withErrors([
                     'code' =>
@@ -274,7 +289,7 @@ class AuthController extends Controller
         }
 
         /*
-         * Change the password.
+         * Update the password.
          */
         $user->update([
             'password' => Hash::make(
@@ -283,8 +298,7 @@ class AuthController extends Controller
         ]);
 
         /*
-         * Delete the code so it cannot
-         * be used again.
+         * Delete the code so it cannot be reused.
          */
         $resetCode->delete();
 
@@ -295,7 +309,6 @@ class AuthController extends Controller
                 'Your password has been changed successfully. You can now sign in.'
             );
     }
-
 
     /**
      * Log the user out.

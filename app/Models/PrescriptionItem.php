@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PrescriptionItem extends Model
 {
@@ -13,6 +14,8 @@ class PrescriptionItem extends Model
         'dosage',
         'frequency',
         'duration',
+        'route',
+        'instructions',
         'quantity_prescribed',
         'quantity_dispensed',
         'notes',
@@ -23,19 +26,33 @@ class PrescriptionItem extends Model
         'quantity_dispensed' => 'integer',
     ];
 
-    /**
-     * Item belongs to a prescription.
-     */
     public function prescription(): BelongsTo
     {
-        return $this->belongsTo(Prescription::class);
+        return $this->belongsTo(
+            Prescription::class
+        );
     }
 
-    /**
-     * Item belongs to a medicine.
-     */
     public function medicine(): BelongsTo
     {
-        return $this->belongsTo(Medicine::class);
+        return $this->belongsTo(
+            Medicine::class
+        );
+    }
+
+    public function saleItems(): HasMany
+    {
+        return $this->hasMany(
+            SaleItem::class
+        );
+    }
+
+    public function remainingQuantity(): int
+    {
+        return max(
+            0,
+            $this->quantity_prescribed -
+            $this->quantity_dispensed
+        );
     }
 }

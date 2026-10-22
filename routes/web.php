@@ -1,4 +1,3 @@
-
 <?php
 
 use Illuminate\Support\Facades\Route;
@@ -11,25 +10,15 @@ use App\Http\Controllers\MedicineBatchController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\ReceiptController;
+use App\Http\Controllers\DoctorController;
+use App\Http\Controllers\PharmacyQueueController;
 
 
 /*
 |--------------------------------------------------------------------------
 | Public Routes
 |--------------------------------------------------------------------------
-*/
-
-
-/*
-|--------------------------------------------------------------------------
-| Home
-|--------------------------------------------------------------------------
-|
-| When someone visits:
-| http://127.0.0.1:8000/
-|
-| redirect them to the login page.
-|
 */
 
 Route::get('/', function () {
@@ -52,68 +41,31 @@ Route::post('/login', [AuthController::class, 'login'])
 
 /*
 |--------------------------------------------------------------------------
-| Password Reset - 6 Digit Administrator Code
-|--------------------------------------------------------------------------
-|
-| This system does NOT send an email reset link.
-|
-| Flow:
-|
-| Login
-|   ↓
-| Forgot Password
-|   ↓
-| Enter email
-|   ↓
-| Contact administrator
-|   ↓
-| Administrator generates 6-digit code
-|   ↓
-| Enter code + new password
-|   ↓
-| Password changed
-|
-*/
-
-
-/*
-|--------------------------------------------------------------------------
-| Show Forgot Password Page
+| Password Reset
 |--------------------------------------------------------------------------
 */
 
 Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])
     ->name('password.request');
 
-
-/*
-|--------------------------------------------------------------------------
-| Request Password Reset
-|--------------------------------------------------------------------------
-*/
-
 Route::post('/forgot-password', [AuthController::class, 'requestResetCode'])
     ->name('password.email');
-
-
-/*
-|--------------------------------------------------------------------------
-| Show Reset Code Verification Page
-|--------------------------------------------------------------------------
-*/
 
 Route::get('/reset-password', [AuthController::class, 'showVerifyResetCode'])
     ->name('password.verify');
 
+Route::post('/reset-password', [AuthController::class, 'resetPassword'])
+    ->name('password.reset');
+
 
 /*
 |--------------------------------------------------------------------------
-| Verify Reset Code + Set New Password
+| Public QR Receipt
 |--------------------------------------------------------------------------
 */
 
-Route::post('/reset-password', [AuthController::class, 'resetPassword'])
-    ->name('password.reset');
+Route::get('/r/{receipt_token}', [ReceiptController::class, 'show'])
+    ->name('receipt.public');
 
 
 /*
@@ -123,7 +75,6 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword'])
 */
 
 Route::middleware('auth')->group(function () {
-
 
     /*
     |--------------------------------------------------------------------------
@@ -137,13 +88,8 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Dashboard
+    | Admin, Pharmacist and Cashier Dashboard
     |--------------------------------------------------------------------------
-    |
-    | Admin
-    | Pharmacist
-    | Cashier
-    |
     */
 
     Route::get('/dashboard', [DashboardController::class, 'index'])
@@ -153,10 +99,44 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Medicines
+    | Doctor Routes
     |--------------------------------------------------------------------------
-    |
-    | Admin + Pharmacist only
+    */
+
+    Route::middleware('role:doctor')
+        ->prefix('doctor')
+        ->name('doctor.')
+        ->group(function () {
+
+            Route::get('/dashboard', [DoctorController::class, 'dashboard'])
+                ->name('dashboard');
+
+            Route::get('/prescriptions/create', [DoctorController::class, 'create'])
+                ->name('prescriptions.create');
+
+            Route::post('/prescriptions', [DoctorController::class, 'store'])
+                ->name('prescriptions.store');
+
+            Route::get('/prescriptions/search', [DoctorController::class, 'searchPrescriptions'])
+                ->name('prescriptions.search');
+
+            Route::get('/prescriptions/{prescription}', [DoctorController::class, 'show'])
+                ->name('prescriptions.show');
+
+            Route::get('/patients/search', [DoctorController::class, 'searchPatients'])
+                ->name('patients.search');
+
+            Route::post('/patients', [DoctorController::class, 'storePatient'])
+                ->name('patients.store');
+
+            Route::get('/medicines/search', [DoctorController::class, 'searchMedicines'])
+                ->name('medicines.search');
+        });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Medicines
     |--------------------------------------------------------------------------
     */
 
@@ -170,9 +150,6 @@ Route::middleware('auth')->group(function () {
     /*
     |--------------------------------------------------------------------------
     | Suppliers
-    |--------------------------------------------------------------------------
-    |
-    | Admin + Pharmacist only
     |--------------------------------------------------------------------------
     */
 
@@ -188,11 +165,21 @@ Route::middleware('auth')->group(function () {
     | Stock
     |--------------------------------------------------------------------------
     |
-    | Admin + Pharmacist only
-    |--------------------------------------------------------------------------
+    | Admin and Pharmacist only.
+    |
     */
 
     Route::middleware('role:admin,pharmacist')->group(function () {
+
+        Route::patch(
+            '/stock/{stock}/deactivate',
+            [MedicineBatchController::class, 'deactivate']
+        )->name('stock.deactivate');
+
+        Route::patch(
+            '/stock/{stock}/activate',
+            [MedicineBatchController::class, 'activate']
+        )->name('stock.activate');
 
         Route::resource('stock', MedicineBatchController::class);
 
@@ -201,15 +188,33 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | POS / Sales / Customers
+    | Pharmacy Queue
     |--------------------------------------------------------------------------
-    |
-    | Admin + Pharmacist + Cashier
+    */
+
+    Route::middleware('role:admin,pharmacist')
+        ->prefix('pharmacy')
+        ->name('pharmacy.')
+        ->group(function () {
+
+            Route::get('/queue', [PharmacyQueueController::class, 'index'])
+                ->name('queue');
+
+            Route::get('/queue/{prescription}', [
+                PharmacyQueueController::class,
+                'show',
+            ])->name('queue.show');
+
+        });
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | POS / Sales / Customers
     |--------------------------------------------------------------------------
     */
 
     Route::middleware('role:admin,pharmacist,cashier')->group(function () {
-
 
         /*
         |--------------------------------------------------------------------------
@@ -219,6 +224,37 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/sales', [SaleController::class, 'index'])
             ->name('sales.index');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Hospital Prescription Verification
+        |--------------------------------------------------------------------------
+        */
+
+        Route::post(
+            '/sales/prescription/verify',
+            [SaleController::class, 'verifyPrescription']
+        )->name('sales.prescription.verify');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Legacy Hospital Prescription Verification Route Name
+        |--------------------------------------------------------------------------
+        */
+
+        Route::post(
+            '/sales/prescription/verify',
+            [SaleController::class, 'verifyPrescription']
+        )->name('hospital-prescriptions.verify');
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Complete Sale
+        |--------------------------------------------------------------------------
+        */
 
         Route::post('/sales', [SaleController::class, 'store'])
             ->name('sales.store');
@@ -286,32 +322,11 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     | User Management
     |--------------------------------------------------------------------------
-    |
-    | ADMIN ONLY
-    |--------------------------------------------------------------------------
     */
 
     Route::middleware('role:admin')->group(function () {
 
-
-        /*
-        |--------------------------------------------------------------------------
-        | User CRUD
-        |--------------------------------------------------------------------------
-        */
-
         Route::resource('users', UserController::class);
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | Generate 6-Digit Password Reset Code
-        |--------------------------------------------------------------------------
-        |
-        | Administrator selects a user and generates
-        | a temporary 6-digit reset code.
-        |
-        */
 
         Route::post(
             '/users/{user}/generate-reset-code',
@@ -320,5 +335,18 @@ Route::middleware('auth')->group(function () {
 
     });
 
-});
 
+    /*
+    |--------------------------------------------------------------------------
+    | Signed Mobile Receipt
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get(
+        '/sales/{sale}/mobile-receipt',
+        [SaleController::class, 'mobileReceipt']
+    )
+        ->name('sales.mobile-receipt')
+        ->middleware('signed');
+
+});
